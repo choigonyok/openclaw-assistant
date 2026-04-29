@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -168,11 +169,17 @@ func (a *AuthService) FetchUser(ctx context.Context, accessToken string) (User, 
 func (a *AuthService) CurrentUser(r *http.Request) (User, bool) {
 	cookie, err := r.Cookie(sessionCookieName)
 	if err != nil || cookie.Value == "" {
+		log.Printf("[auth] no session cookie: %v", err)
 		return User{}, false
 	}
 
 	payload, ok := a.verify(cookie.Value)
-	if !ok || payload.ExpiresAt.Before(time.Now()) {
+	if !ok {
+		log.Printf("[auth] verify failed, cookie len=%d", len(cookie.Value))
+		return User{}, false
+	}
+	if payload.ExpiresAt.Before(time.Now()) {
+		log.Printf("[auth] session expired at %v", payload.ExpiresAt)
 		return User{}, false
 	}
 	return payload.User, true
