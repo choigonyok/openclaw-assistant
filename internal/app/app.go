@@ -125,7 +125,7 @@ func ConfigFromEnv() Config {
 		OpenClawToken:      os.Getenv("OPENCLAW_TOKEN"),
 		NaverClientID:      os.Getenv("NAVER_CLIENT_ID"),
 		NaverClientSecret:  os.Getenv("NAVER_CLIENT_SECRET"),
-		NaverRedirectURL:   envOrDefault("NAVER_REDIRECT_URL", "https://choigonyok.com/auth/naver/callback"),
+		NaverRedirectURL:   envOrDefault("NAVER_REDIRECT_URL", "https://agent.choigonyok.com/auth/naver/callback"),
 		SessionSecret:      envOrDefault("SESSION_SECRET", "dev-session-secret-change-me"),
 		NaverAllowedIDs:    splitCSV(os.Getenv("NAVER_ALLOWED_IDS")),
 		GoogleClientID:     os.Getenv("GOOGLE_CLIENT_ID"),

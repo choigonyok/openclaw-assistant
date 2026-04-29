@@ -226,6 +226,66 @@ var pageTemplate = template.Must(template.New("page").Parse(`<!doctype html>
       color: var(--text);
       font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
+
+    /* ── 로그인 페이지 ── */
+    .login-page {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      gap: 24px;
+    }
+    .login-card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 40px 48px;
+      text-align: center;
+      width: min(360px, calc(100% - 32px));
+    }
+    .login-card .brand-mark {
+      display: inline-grid;
+      place-items: center;
+      width: 48px;
+      height: 48px;
+      border-radius: 10px;
+      background: var(--accent);
+      color: var(--button-text);
+      font-weight: 900;
+      font-size: 18px;
+      margin-bottom: 16px;
+    }
+    .login-card h1 {
+      margin: 0 0 4px;
+      font-size: 22px;
+    }
+    .login-card p {
+      margin: 0 0 28px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .login-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      width: 100%;
+      border-radius: 8px;
+      background: #03c75a;
+      color: #ffffff;
+      font-weight: 800;
+      font-size: 15px;
+      padding: 0 16px;
+      text-decoration: none;
+    }
+    .login-button:hover { background: #02b351; }
+    .login-notice {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    /* ── 패널 ── */
     .shell {
       display: grid;
       grid-template-columns: 260px minmax(0, 1fr);
@@ -267,9 +327,7 @@ var pageTemplate = template.Must(template.New("page").Parse(`<!doctype html>
       color: var(--button-text);
       font-weight: 900;
     }
-    .brand-text {
-      min-width: 0;
-    }
+    .brand-text { min-width: 0; }
     .brand-title {
       font-size: 16px;
       font-weight: 800;
@@ -296,13 +354,8 @@ var pageTemplate = template.Must(template.New("page").Parse(`<!doctype html>
       font-size: 18px;
       padding: 0;
     }
-    .icon-button:hover {
-      background: rgba(255, 255, 255, .08);
-    }
-    .nav-tabs {
-      display: grid;
-      gap: 8px;
-    }
+    .icon-button:hover { background: rgba(255, 255, 255, .08); }
+    .nav-tabs { display: grid; gap: 8px; }
     .tab-button {
       display: flex;
       align-items: center;
@@ -341,13 +394,9 @@ var pageTemplate = template.Must(template.New("page").Parse(`<!doctype html>
     }
     body.sidebar-collapsed .brand-text,
     body.sidebar-collapsed .tab-label,
-    body.sidebar-collapsed .sidebar-footer .status-label {
-      display: none;
-    }
+    body.sidebar-collapsed .sidebar-footer .status-label { display: none; }
     body.sidebar-collapsed .brand-row,
-    body.sidebar-collapsed .sidebar-footer {
-      justify-content: center;
-    }
+    body.sidebar-collapsed .sidebar-footer { justify-content: center; }
     main {
       width: min(980px, calc(100% - 32px));
       margin: 0 auto;
@@ -360,27 +409,15 @@ var pageTemplate = template.Must(template.New("page").Parse(`<!doctype html>
       gap: 16px;
       margin-bottom: 20px;
     }
-    h1 {
-      margin: 0;
-      font-size: 28px;
-      line-height: 1.2;
-    }
-    .status {
-      color: var(--muted);
-      font-size: 14px;
-      white-space: nowrap;
-    }
+    h1 { margin: 0; font-size: 28px; line-height: 1.2; }
+    .status { color: var(--muted); font-size: 14px; white-space: nowrap; }
     form, .result {
       background: var(--panel);
       border: 1px solid var(--line);
       border-radius: 8px;
       padding: 18px;
     }
-    label {
-      display: block;
-      margin-bottom: 10px;
-      font-weight: 700;
-    }
+    label { display: block; margin-bottom: 10px; font-weight: 700; }
     textarea {
       width: 100%;
       min-height: 180px;
@@ -397,11 +434,7 @@ var pageTemplate = template.Must(template.New("page").Parse(`<!doctype html>
       outline: 3px solid rgba(8, 127, 140, .16);
       border-color: var(--accent);
     }
-    .actions {
-      display: flex;
-      justify-content: flex-end;
-      margin-top: 12px;
-    }
+    .actions { display: flex; justify-content: flex-end; margin-top: 12px; }
     button {
       border: 0;
       border-radius: 6px;
@@ -414,39 +447,9 @@ var pageTemplate = template.Must(template.New("page").Parse(`<!doctype html>
     }
     button:hover { background: var(--accent-strong); }
     a { color: var(--accent); }
-    .workspace-meta {
-      color: var(--muted);
-      font-size: 14px;
-      margin: -8px 0 18px;
-    }
-    .login {
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 18px;
-    }
-    .login-button {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      min-height: 42px;
-      border-radius: 6px;
-      background: #03c75a;
-      color: #ffffff;
-      font-weight: 800;
-      padding: 0 16px;
-      text-decoration: none;
-    }
-    .login-button:hover { background: #02b351; }
-    .result {
-      margin-top: 18px;
-      white-space: pre-wrap;
-      line-height: 1.55;
-    }
-    .error {
-      border-color: rgba(180, 35, 24, .28);
-      color: var(--danger);
-    }
+    .workspace-meta { color: var(--muted); font-size: 14px; margin: -8px 0 18px; }
+    .result { margin-top: 18px; white-space: pre-wrap; line-height: 1.55; }
+    .error { border-color: rgba(180, 35, 24, .28); color: var(--danger); }
     @media (max-width: 640px) {
       main { width: min(100% - 24px, 920px); padding: 24px 0; }
       header { display: block; }
@@ -457,15 +460,14 @@ var pageTemplate = template.Must(template.New("page").Parse(`<!doctype html>
       .shell { grid-template-columns: 72px minmax(0, 1fr); }
       body:not(.sidebar-expanded) .brand-text,
       body:not(.sidebar-expanded) .tab-label,
-      body:not(.sidebar-expanded) .sidebar-footer .status-label {
-        display: none;
-      }
+      body:not(.sidebar-expanded) .sidebar-footer .status-label { display: none; }
       body.sidebar-expanded .shell { grid-template-columns: 240px minmax(0, 1fr); }
       main { width: min(100% - 24px, 920px); }
     }
   </style>
 </head>
 <body>
+{{if .User.ID}}
   <div class="shell">
     <aside class="sidebar" aria-label="작업 메뉴">
       <div class="sidebar-inner">
@@ -477,22 +479,20 @@ var pageTemplate = template.Must(template.New("page").Parse(`<!doctype html>
           </div>
         </div>
 
-        {{if .User.ID}}
-          <nav class="nav-tabs" aria-label="작업 탭">
-            <button class="tab-button" type="button" data-tab-target="trader" aria-pressed="true">
-              <span class="tab-icon" aria-hidden="true">◇</span>
-              <span class="tab-label">Trader</span>
-            </button>
-            <button class="tab-button" type="button" data-tab-target="builder" aria-pressed="false">
-              <span class="tab-icon" aria-hidden="true">▣</span>
-              <span class="tab-label">Website Builder</span>
-            </button>
-            <button class="tab-button" type="button" data-tab-target="asset-manager" aria-pressed="false">
-              <span class="tab-icon" aria-hidden="true">▤</span>
-              <span class="tab-label">Asset Manager</span>
-            </button>
-          </nav>
-        {{end}}
+        <nav class="nav-tabs" aria-label="작업 탭">
+          <button class="tab-button" type="button" data-tab-target="trader" aria-pressed="true">
+            <span class="tab-icon" aria-hidden="true">◇</span>
+            <span class="tab-label">Trader</span>
+          </button>
+          <button class="tab-button" type="button" data-tab-target="builder" aria-pressed="false">
+            <span class="tab-icon" aria-hidden="true">▣</span>
+            <span class="tab-label">Website Builder</span>
+          </button>
+          <button class="tab-button" type="button" data-tab-target="asset-manager" aria-pressed="false">
+            <span class="tab-icon" aria-hidden="true">▤</span>
+            <span class="tab-label">Asset Manager</span>
+          </button>
+        </nav>
 
         <div class="sidebar-footer">
           <span class="status-label">패널</span>
@@ -504,48 +504,48 @@ var pageTemplate = template.Must(template.New("page").Parse(`<!doctype html>
     <main>
       <header>
         <h1 id="pageTitle">OpenClaw Assistant</h1>
-        {{if .User.ID}}
-          <div class="status">
-            {{if .User.Nickname}}{{.User.Nickname}}{{else}}{{.User.ID}}{{end}} · {{.User.ID}} ·
-            <button class="icon-button" type="button" id="themeToggle" aria-label="다크 모드 라이트 모드 전환">◐</button>
-            <a href="/logout">로그아웃</a>
-          </div>
-        {{else}}
-          <div class="status">
-            Gateway command console
-            <button class="icon-button" type="button" id="themeToggle" aria-label="다크 모드 라이트 모드 전환">◐</button>
-          </div>
-        {{end}}
+        <div class="status">
+          {{if .User.Nickname}}{{.User.Nickname}}{{else}}{{.User.ID}}{{end}} · {{.User.ID}} ·
+          <button class="icon-button" type="button" id="themeToggle" aria-label="다크 모드 라이트 모드 전환">◐</button>
+          <a href="/logout">로그아웃</a>
+        </div>
       </header>
 
-      {{if .User.ID}}
-        <p class="workspace-meta" id="workspaceMeta">Trader workspace</p>
-        <form method="post" action="/command">
-          <input type="hidden" id="activeTab" name="tab" value="{{if .ActiveTab}}{{.ActiveTab}}{{else}}trader{{end}}">
-          <label for="command">명령</label>
-          <textarea id="command" name="command" placeholder="OpenClaw에게 시킬 일을 입력하세요">{{.Command}}</textarea>
-          <div class="actions">
-            <button type="submit">보내기</button>
-          </div>
-        </form>
+      <p class="workspace-meta" id="workspaceMeta">Trader workspace</p>
+      <form method="post" action="/command">
+        <input type="hidden" id="activeTab" name="tab" value="{{if .ActiveTab}}{{.ActiveTab}}{{else}}trader{{end}}">
+        <label for="command">명령</label>
+        <textarea id="command" name="command" placeholder="OpenClaw에게 시킬 일을 입력하세요">{{.Command}}</textarea>
+        <div class="actions">
+          <button type="submit">보내기</button>
+        </div>
+      </form>
 
-        {{if .Error}}
-          <section class="result error">{{.Error}}</section>
-        {{end}}
-        {{if .Reply}}
-          <section class="result">{{.Reply}}</section>
-        {{end}}
-      {{else}}
-        <section class="login">
-          {{if .AuthEnabled}}
-            <a class="login-button" href="/login/naver">네이버로 로그인</a>
-          {{else}}
-            <p>네이버 로그인을 사용하려면 서버 환경변수에 NAVER_CLIENT_ID와 NAVER_CLIENT_SECRET을 설정하세요.</p>
-          {{end}}
-        </section>
+      {{if .Error}}
+        <section class="result error">{{.Error}}</section>
+      {{end}}
+      {{if .Reply}}
+        <section class="result">{{.Reply}}</section>
       {{end}}
     </main>
   </div>
+{{else}}
+  <div class="login-page">
+    <div class="login-card">
+      <div class="brand-mark">OC</div>
+      <h1>OpenClaw Assistant</h1>
+      <p>계속하려면 네이버 계정으로 로그인하세요.</p>
+      {{if .AuthEnabled}}
+        <a class="login-button" href="/login/naver">네이버로 로그인</a>
+      {{else}}
+        <p style="color:var(--danger);font-size:13px;">네이버 로그인이 설정되지 않았습니다.<br>NAVER_CLIENT_ID와 NAVER_CLIENT_SECRET을 설정하세요.</p>
+      {{end}}
+    </div>
+    <span class="login-notice">
+      <button type="button" id="themeToggle" style="border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:6px;padding:6px 10px;cursor:pointer;">◐</button>
+    </span>
+  </div>
+{{end}}
   <script>
     (function () {
       var root = document.documentElement;
