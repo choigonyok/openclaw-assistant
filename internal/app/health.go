@@ -1,12 +1,17 @@
 package app
 
 import (
+	"bufio"
 	"encoding/json"
 	"net/http"
+	"os"
 	"os/exec"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
+	"time"
 )
 
 type HealthStats struct {
@@ -22,6 +27,9 @@ type HealthStats struct {
 var cpuIdleRe = regexp.MustCompile(`(\d+\.\d+)%\s+idle`)
 
 func collectCPU() float64 {
+	if runtime.GOOS == "linux" {
+		return collectLinuxCPU()
+	}
 	out, err := exec.Command("sh", "-c", `top -l 2 -n 0 -s 1 | grep "CPU usage" | tail -1`).Output()
 	if err != nil {
 		return 0
@@ -34,7 +42,61 @@ func collectCPU() float64 {
 	return 100 - idle
 }
 
+func collectLinuxCPU() float64 {
+	idle1, total1, ok := readLinuxCPUStat()
+	if !ok {
+		return 0
+	}
+	time.Sleep(200 * time.Millisecond)
+	idle2, total2, ok := readLinuxCPUStat()
+	if !ok {
+		return 0
+	}
+
+	idleDelta := idle2 - idle1
+	totalDelta := total2 - total1
+	if totalDelta <= 0 {
+		return 0
+	}
+	return (1 - float64(idleDelta)/float64(totalDelta)) * 100
+}
+
+func readLinuxCPUStat() (idle, total uint64, ok bool) {
+	file, err := os.Open("/proc/stat")
+	if err != nil {
+		return 0, 0, false
+	}
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	if !scanner.Scan() {
+		return 0, 0, false
+	}
+	fields := strings.Fields(scanner.Text())
+	if len(fields) < 8 || fields[0] != "cpu" {
+		return 0, 0, false
+	}
+
+	var values []uint64
+	for _, field := range fields[1:] {
+		value, err := strconv.ParseUint(field, 10, 64)
+		if err != nil {
+			return 0, 0, false
+		}
+		values = append(values, value)
+		total += value
+	}
+	idle = values[3]
+	if len(values) > 4 {
+		idle += values[4]
+	}
+	return idle, total, true
+}
+
 func collectMemory() (used, total, pct float64) {
+	if runtime.GOOS == "linux" {
+		return collectLinuxMemory()
+	}
 	out, err := exec.Command("sysctl", "-n", "hw.memsize").Output()
 	if err != nil {
 		return
@@ -65,6 +127,46 @@ func collectMemory() (used, total, pct float64) {
 	return
 }
 
+func collectLinuxMemory() (used, total, pct float64) {
+	file, err := os.Open("/proc/meminfo")
+	if err != nil {
+		return
+	}
+	defer file.Close()
+
+	values := map[string]float64{}
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		fields := strings.Fields(scanner.Text())
+		if len(fields) < 2 {
+			continue
+		}
+		key := strings.TrimSuffix(fields[0], ":")
+		valueKB, err := strconv.ParseFloat(fields[1], 64)
+		if err != nil {
+			continue
+		}
+		values[key] = valueKB
+	}
+
+	totalKB := values["MemTotal"]
+	availableKB := values["MemAvailable"]
+	if availableKB == 0 {
+		availableKB = values["MemFree"] + values["Buffers"] + values["Cached"]
+	}
+	usedKB := totalKB - availableKB
+	if usedKB < 0 {
+		usedKB = 0
+	}
+
+	total = totalKB / (1024 * 1024)
+	used = usedKB / (1024 * 1024)
+	if total > 0 {
+		pct = used / total * 100
+	}
+	return
+}
+
 func parseVMStatLine(line string) int64 {
 	parts := strings.Fields(line)
 	if len(parts) == 0 {
@@ -75,6 +177,9 @@ func parseVMStatLine(line string) int64 {
 }
 
 func collectDisk() (used, total, pct float64) {
+	if runtime.GOOS == "linux" {
+		return collectLinuxDisk()
+	}
 	out, err := exec.Command("df", "-k", "/").Output()
 	if err != nil {
 		return
@@ -97,6 +202,22 @@ func collectDisk() (used, total, pct float64) {
 	return
 }
 
+func collectLinuxDisk() (used, total, pct float64) {
+	var stat syscall.Statfs_t
+	if err := syscall.Statfs("/", &stat); err != nil {
+		return
+	}
+	totalBytes := stat.Blocks * uint64(stat.Bsize)
+	freeBytes := stat.Bavail * uint64(stat.Bsize)
+	usedBytes := totalBytes - freeBytes
+	total = float64(totalBytes) / (1 << 30)
+	used = float64(usedBytes) / (1 << 30)
+	if total > 0 {
+		pct = used / total * 100
+	}
+	return
+}
+
 func handleHealthAPI(auth *AuthService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		_, ok := auth.CurrentUserOrDev(r)
@@ -106,7 +227,7 @@ func handleHealthAPI(auth *AuthService) http.HandlerFunc {
 		}
 
 		type result struct {
-			cpu         float64
+			cpu        float64
 			mu, mt, mp float64
 			du, dt, dp float64
 		}
