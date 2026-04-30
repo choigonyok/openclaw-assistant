@@ -85,10 +85,17 @@ func (a *AuthService) CurrentUserOrDev(r *http.Request) (User, bool) {
 }
 
 func (a *AuthService) LoginURL(state string) string {
+	return a.LoginURLForRedirect(state, a.redirectURL)
+}
+
+func (a *AuthService) LoginURLForRedirect(state, redirectURL string) string {
+	if redirectURL == "" {
+		redirectURL = a.redirectURL
+	}
 	values := url.Values{}
 	values.Set("response_type", "code")
 	values.Set("client_id", a.clientID)
-	values.Set("redirect_uri", a.redirectURL)
+	values.Set("redirect_uri", redirectURL)
 	values.Set("state", state)
 	return "https://nid.naver.com/oauth2.0/authorize?" + values.Encode()
 }

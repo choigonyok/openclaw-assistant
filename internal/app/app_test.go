@@ -115,6 +115,31 @@ func TestGoogleStatusRequiresLogin(t *testing.T) {
 	}
 }
 
+func TestNaverLoginUsesFrontendURLForRedirectURI(t *testing.T) {
+	auth := NewAuthService(AuthConfig{
+		ClientID:     "client-id",
+		ClientSecret: "client-secret",
+		RedirectURL:  "http://localhost:8080/auth/naver/callback",
+		SessionKey:   "test-secret",
+	})
+	handler := NewHandler(&fakeSender{}, auth, NewGoogleService(GoogleConfig{}), NewKISClient("", "", "", "", false), NewUpbitClient("", ""), apiHandlerConfig{
+		FrontendURL: "https://agent.choigonyok.com",
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/login/naver", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusFound {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusFound)
+	}
+	location := rec.Header().Get("Location")
+	if !strings.Contains(location, "redirect_uri=https%3A%2F%2Fagent.choigonyok.com%2Fauth%2Fnaver%2Fcallback") {
+		t.Fatalf("Location does not include frontend callback redirect_uri: %s", location)
+	}
+}
+
 func TestGoogleStatusInDevMode(t *testing.T) {
 	handler := NewHandler(&fakeSender{}, NewAuthService(AuthConfig{SessionKey: "test-secret", DevMode: true}), NewGoogleService(GoogleConfig{
 		ClientID:     "client",

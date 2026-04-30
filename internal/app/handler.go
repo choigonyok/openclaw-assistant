@@ -24,7 +24,7 @@ func NewHandler(client commandSender, auth *AuthService, google *GoogleService, 
 	mux.HandleFunc("/api/command", handleCommandAPI(client, auth))
 	mux.HandleFunc("/command", handleCommandAPI(client, auth))
 	mux.Handle("/api/google/", NewGoogleAPIHandler(google, auth))
-	mux.HandleFunc("/login/naver", handleNaverLogin(auth))
+	mux.HandleFunc("/login/naver", handleNaverLogin(auth, cfg.FrontendURL))
 	mux.HandleFunc("/auth/naver/callback", handleNaverCallback(auth, cfg.FrontendURL))
 	mux.HandleFunc("/logout", handleLogout(auth, cfg.FrontendURL))
 	mux.HandleFunc("/api/health", handleHealthAPI(auth))
@@ -130,7 +130,7 @@ func commandForTab(tab, command string) string {
 	}
 }
 
-func handleNaverLogin(auth *AuthService) http.HandlerFunc {
+func handleNaverLogin(auth *AuthService, frontendURL string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !auth.Enabled() {
 			http.Error(w, "naver login is not configured", http.StatusServiceUnavailable)
@@ -142,7 +142,7 @@ func handleNaverLogin(auth *AuthService) http.HandlerFunc {
 			return
 		}
 		auth.SetState(w, r, state)
-		http.Redirect(w, r, auth.LoginURL(state), http.StatusFound)
+		http.Redirect(w, r, auth.LoginURLForRedirect(state, callbackURLForRequest(r, frontendURL)), http.StatusFound)
 	}
 }
 
@@ -203,6 +203,25 @@ func handleLogout(auth *AuthService, frontendURL string) http.HandlerFunc {
 		}
 		http.Redirect(w, r, redirectURL, http.StatusSeeOther)
 	}
+}
+
+func callbackURLForRequest(r *http.Request, frontendURL string) string {
+	if frontendURL != "" {
+		return strings.TrimRight(frontendURL, "/") + "/auth/naver/callback"
+	}
+	proto := r.Header.Get("X-Forwarded-Proto")
+	if proto == "" {
+		if r.TLS != nil {
+			proto = "https"
+		} else {
+			proto = "http"
+		}
+	}
+	host := r.Header.Get("X-Forwarded-Host")
+	if host == "" {
+		host = r.Host
+	}
+	return proto + "://" + host + "/auth/naver/callback"
 }
 
 func handleCryptoAPI(upbit *UpbitClient, auth *AuthService) http.HandlerFunc {

@@ -90,7 +90,7 @@ DEV=false
 OPENCLAW_BASE_URL=http://localhost:18789
 OPENCLAW_TOKEN=
 
-FRONTEND_URL=
+FRONTEND_URL=https://agent.choigonyok.com
 CORS_ALLOWED_ORIGINS=https://agent.choigonyok.com,http://localhost:5173,http://localhost:3000
 
 NAVER_CLIENT_ID=
