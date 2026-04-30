@@ -143,7 +143,7 @@ func ConfigFromEnv() Config {
 		GoogleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
 		GoogleRefreshToken: os.Getenv("GOOGLE_REFRESH_TOKEN"),
 		FrontendURL:        os.Getenv("FRONTEND_URL"),
-		CORSAllowedOrigins: splitCSV(envOrDefault("CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000")),
+		CORSAllowedOrigins: splitCSV(envOrDefault("CORS_ALLOWED_ORIGINS", "https://agent.choigonyok.com,http://localhost:5173,http://localhost:3000")),
 		Dev:                envBool("DEV"),
 		KISAppKey:          os.Getenv("KIS_APP_KEY"),
 		KISAppSecret:       os.Getenv("KIS_APP_SECRET"),
