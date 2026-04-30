@@ -38,9 +38,11 @@ func Run(ctx context.Context, args []string, out io.Writer) error {
 		AllowedIDs:   cfg.NaverAllowedIDs,
 		DevMode:      cfg.Dev,
 	})
+	kis := NewKISClient(cfg.KISAppKey, cfg.KISAppSecret, cfg.KISAccountNo, cfg.KISAccountProduct, cfg.KISMock)
+	upbit := NewUpbitClient(cfg.UpbitAccessKey, cfg.UpbitSecretKey)
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           NewHandler(NewOpenClawClient(cfg.OpenClawBaseURL, cfg.OpenClawToken), auth, google),
+		Handler:           NewHandler(NewOpenClawClient(cfg.OpenClawBaseURL, cfg.OpenClawToken), auth, google, kis, upbit),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -116,6 +118,13 @@ type Config struct {
 	GoogleClientSecret string
 	GoogleRefreshToken string
 	Dev                bool
+	KISAppKey          string
+	KISAppSecret       string
+	KISAccountNo       string
+	KISAccountProduct  string
+	KISMock            bool
+	UpbitAccessKey     string
+	UpbitSecretKey     string
 }
 
 func ConfigFromEnv() Config {
@@ -132,6 +141,13 @@ func ConfigFromEnv() Config {
 		GoogleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
 		GoogleRefreshToken: os.Getenv("GOOGLE_REFRESH_TOKEN"),
 		Dev:                envBool("DEV"),
+		KISAppKey:          os.Getenv("KIS_APP_KEY"),
+		KISAppSecret:       os.Getenv("KIS_APP_SECRET"),
+		KISAccountNo:       os.Getenv("KIS_ACCOUNT_NO"),
+		KISAccountProduct:  envOrDefault("KIS_ACCOUNT_PRODUCT", "01"),
+		KISMock:            envBool("KIS_MOCK"),
+		UpbitAccessKey:     os.Getenv("UPBIT_ACCESS_KEY"),
+		UpbitSecretKey:     os.Getenv("UPBIT_SECRET_KEY"),
 	}
 }
 

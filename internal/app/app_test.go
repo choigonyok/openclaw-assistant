@@ -31,7 +31,7 @@ func TestHandlerSendsCommand(t *testing.T) {
 	auth := NewAuthService(AuthConfig{
 		SessionKey: "test-secret",
 	})
-	handler := NewHandler(client, auth, NewGoogleService(GoogleConfig{}))
+	handler := newTestHandler(client, auth)
 
 	req := httptest.NewRequest(http.MethodPost, "/command", strings.NewReader("tab=builder&command=hello"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -64,7 +64,7 @@ func TestHandlerAllowsCommandInDevMode(t *testing.T) {
 		SessionKey: "test-secret",
 		DevMode:    true,
 	})
-	handler := NewHandler(client, auth, NewGoogleService(GoogleConfig{}))
+	handler := newTestHandler(client, auth)
 
 	req := httptest.NewRequest(http.MethodPost, "/command", strings.NewReader("tab=trader&command=buy signal"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -86,7 +86,7 @@ func TestHandlerSendsAssetManagerCommand(t *testing.T) {
 		SessionKey: "test-secret",
 		DevMode:    true,
 	})
-	handler := NewHandler(client, auth, NewGoogleService(GoogleConfig{}))
+	handler := newTestHandler(client, auth)
 
 	req := httptest.NewRequest(http.MethodPost, "/command", strings.NewReader("tab=asset-manager&command=list assets"))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
@@ -103,7 +103,7 @@ func TestHandlerSendsAssetManagerCommand(t *testing.T) {
 }
 
 func TestGoogleStatusRequiresLogin(t *testing.T) {
-	handler := NewHandler(&fakeSender{}, NewAuthService(AuthConfig{SessionKey: "test-secret"}), NewGoogleService(GoogleConfig{}))
+	handler := newTestHandler(&fakeSender{}, NewAuthService(AuthConfig{SessionKey: "test-secret"}))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/google/status", nil)
 	rec := httptest.NewRecorder()
@@ -120,7 +120,7 @@ func TestGoogleStatusInDevMode(t *testing.T) {
 		ClientID:     "client",
 		ClientSecret: "secret",
 		RefreshToken: "refresh",
-	}))
+	}), NewKISClient("", "", "", "", false), NewUpbitClient("", ""))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/google/status", nil)
 	rec := httptest.NewRecorder()
@@ -187,6 +187,10 @@ type fakeSender struct {
 	reply   string
 	err     error
 	command string
+}
+
+func newTestHandler(client commandSender, auth *AuthService) http.Handler {
+	return NewHandler(client, auth, NewGoogleService(GoogleConfig{}), NewKISClient("", "", "", "", false), NewUpbitClient("", ""))
 }
 
 func (f *fakeSender) SendCommand(_ context.Context, command string) (string, error) {

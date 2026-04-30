@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"html/template"
 	"log"
 	"net/http"
@@ -13,7 +14,7 @@ type commandSender interface {
 	SendCommand(ctx context.Context, command string) (string, error)
 }
 
-func NewHandler(client commandSender, auth *AuthService, google *GoogleService) http.Handler {
+func NewHandler(client commandSender, auth *AuthService, google *GoogleService, kis *KISClient, upbit *UpbitClient) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", handleHome(auth))
 	mux.HandleFunc("/command", handleCommand(client, auth))
@@ -22,6 +23,8 @@ func NewHandler(client commandSender, auth *AuthService, google *GoogleService) 
 	mux.HandleFunc("/auth/naver/callback", handleNaverCallback(auth))
 	mux.HandleFunc("/logout", handleLogout(auth))
 	mux.HandleFunc("/api/health", handleHealthAPI(auth))
+	mux.HandleFunc("/api/assets", handleAssetsAPI(kis, auth))
+	mux.HandleFunc("/api/crypto", handleCryptoAPI(upbit, auth))
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok\n"))
@@ -165,6 +168,52 @@ func handleLogout(auth *AuthService) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		auth.ClearSession(w, r)
 		http.Redirect(w, r, "/", http.StatusSeeOther)
+	}
+}
+
+func handleCryptoAPI(upbit *UpbitClient, auth *AuthService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		_, ok := auth.CurrentUserOrDev(r)
+		if !ok {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if !upbit.Enabled() {
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"error": "업비트 API가 설정되지 않았습니다. .env에 UPBIT_ACCESS_KEY, UPBIT_SECRET_KEY를 설정하세요.",
+			})
+			return
+		}
+		result, err := upbit.GetAssets()
+		if err != nil {
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(result)
+	}
+}
+
+func handleAssetsAPI(kis *KISClient, auth *AuthService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		_, ok := auth.CurrentUserOrDev(r)
+		if !ok {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if !kis.Enabled() {
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"error": "나무증권 API가 설정되지 않았습니다. .env에 KIS_APP_KEY, KIS_APP_SECRET, KIS_ACCOUNT_NO를 설정하세요.",
+			})
+			return
+		}
+		result, err := kis.GetBalance()
+		if err != nil {
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(result)
 	}
 }
 
@@ -615,9 +664,140 @@ var pageTemplate = template.Must(template.New("page").Parse(`<!doctype html>
       letter-spacing: 0.01em;
     }
 
+    /* ── 잔고 패널 ── */
+    #assets-panel { display: none; }
+    .assets-summary {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+    .asset-card {
+      background: var(--card);
+      border-radius: 16px;
+      box-shadow: var(--shadow-sm);
+      padding: 22px 20px;
+    }
+    .ac-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      margin-bottom: 8px;
+    }
+    .ac-value {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: -0.6px;
+      color: var(--text);
+    }
+    .ac-value.pos { color: #e22d2d; }
+    .ac-value.neg { color: var(--accent); }
+    .ac-sub { font-size: 12px; color: var(--muted); margin-top: 4px; font-weight: 600; }
+    .holdings-card {
+      background: var(--card);
+      border-radius: 16px;
+      box-shadow: var(--shadow-sm);
+      padding: 20px;
+      overflow-x: auto;
+    }
+    .holdings-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .holdings-title {
+      font-size: 15px;
+      font-weight: 800;
+      letter-spacing: -0.3px;
+    }
+    .holdings-meta { display: flex; align-items: center; gap: 10px; }
+    .assets-ts { font-size: 11px; color: var(--muted); }
+    .btn-refresh {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      height: 28px;
+      padding: 0 10px;
+      border-radius: 7px;
+      border: 1px solid var(--line);
+      background: transparent;
+      color: var(--muted);
+      font: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .1s;
+    }
+    .btn-refresh:hover { background: var(--line); }
+    .holdings-tbl {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+      min-width: 560px;
+    }
+    .holdings-tbl th {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 0 10px 10px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      white-space: nowrap;
+    }
+    .holdings-tbl th.r { text-align: right; }
+    .holdings-tbl td {
+      padding: 13px 10px;
+      border-bottom: 1px solid var(--line);
+      color: var(--text);
+      font-weight: 600;
+      vertical-align: middle;
+    }
+    .holdings-tbl td.r { text-align: right; }
+    .holdings-tbl tr:last-child td { border-bottom: none; }
+    .stock-name { font-weight: 700; }
+    .stock-code { font-size: 11px; color: var(--muted); font-weight: 600; margin-top: 1px; }
+    .pnl-pos { color: #e22d2d; }
+    .pnl-neg { color: var(--accent); }
+    .holdings-empty {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .section-divider {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 20px 0 16px;
+    }
+    .divider-line { flex: 1; height: 1px; background: var(--line); }
+    .divider-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      white-space: nowrap;
+    }
+    .assets-error {
+      background: var(--danger-bg);
+      color: var(--danger);
+      border-radius: 10px;
+      padding: 16px;
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+
     /* ── 반응형 ── */
     @media (max-width: 860px) {
       .health-grid { grid-template-columns: 1fr; }
+      .assets-summary { grid-template-columns: 1fr; }
     }
     @media (max-width: 760px) {
       .sidebar { width: 64px; flex-basis: 64px; }
@@ -702,6 +882,95 @@ var pageTemplate = template.Must(template.New("page").Parse(`<!doctype html>
         {{end}}
       </div>
 
+      <section id="assets-panel">
+        <div id="assets-error" class="assets-error" style="display:none"></div>
+        <div class="assets-summary">
+          <div class="asset-card">
+            <div class="ac-label">총 평가금액</div>
+            <div class="ac-value" id="ac-total">—</div>
+          </div>
+          <div class="asset-card">
+            <div class="ac-label">예수금</div>
+            <div class="ac-value" id="ac-cash">—</div>
+          </div>
+          <div class="asset-card">
+            <div class="ac-label">평가손익</div>
+            <div class="ac-value" id="ac-pnl">—</div>
+            <div class="ac-sub" id="ac-buy">매입금액 —</div>
+          </div>
+        </div>
+        <div class="holdings-card">
+          <div class="holdings-header">
+            <div class="holdings-title">보유종목</div>
+            <div class="holdings-meta">
+              <span class="assets-ts" id="assets-ts"></span>
+              <button class="btn-refresh" id="assetsRefresh" type="button">↺ 새로고침</button>
+            </div>
+          </div>
+          <div id="holdings-wrap">
+            <table class="holdings-tbl" id="holdings-tbl">
+              <thead>
+                <tr>
+                  <th>종목</th>
+                  <th class="r">수량</th>
+                  <th class="r">평균단가</th>
+                  <th class="r">현재가</th>
+                  <th class="r">평가금액</th>
+                  <th class="r">손익</th>
+                </tr>
+              </thead>
+              <tbody id="holdings-body"></tbody>
+            </table>
+            <div class="holdings-empty" id="holdings-empty" style="display:none">보유 종목이 없습니다.</div>
+          </div>
+        </div>
+        <div class="section-divider">
+          <div class="divider-line"></div>
+          <span class="divider-label">업비트 코인</span>
+          <div class="divider-line"></div>
+        </div>
+
+        <div id="crypto-summary" class="assets-summary">
+          <div class="asset-card">
+            <div class="ac-label">코인 총 평가</div>
+            <div class="ac-value" id="cc-total">—</div>
+          </div>
+          <div class="asset-card">
+            <div class="ac-label">원화 잔고</div>
+            <div class="ac-value" id="cc-krw">—</div>
+          </div>
+          <div class="asset-card">
+            <div class="ac-label">코인 평가손익</div>
+            <div class="ac-value" id="cc-pnl">—</div>
+          </div>
+        </div>
+
+        <div class="holdings-card">
+          <div class="holdings-header">
+            <div class="holdings-title">보유 코인</div>
+            <div class="holdings-meta">
+              <span class="assets-ts" id="crypto-ts"></span>
+              <button class="btn-refresh" id="cryptoRefresh" type="button">↺ 새로고침</button>
+            </div>
+          </div>
+          <div id="crypto-error" class="assets-error" style="display:none"></div>
+          <table class="holdings-tbl" id="crypto-tbl">
+            <thead>
+              <tr>
+                <th>코인</th>
+                <th class="r">보유수량</th>
+                <th class="r">평균단가</th>
+                <th class="r">현재가</th>
+                <th class="r">평가금액</th>
+                <th class="r">손익</th>
+              </tr>
+            </thead>
+            <tbody id="crypto-body"></tbody>
+          </table>
+          <div class="holdings-empty" id="crypto-empty" style="display:none">보유 코인이 없습니다.</div>
+        </div>
+      </section>
+
       <section id="health-panel">
         <div class="health-grid">
           <div class="health-card">
@@ -757,6 +1026,139 @@ var pageTemplate = template.Must(template.New("page").Parse(`<!doctype html>
     "health":         { title: "OpenClaw Health",  sub: "Mac Mini 실시간 모니터링" }
   };
   var healthTimer = null;
+  var assetsLoaded = false;
+  var cryptoLoaded = false;
+
+  function krw(s) {
+    var n = parseInt(s, 10);
+    if (isNaN(n)) return s || "—";
+    return n.toLocaleString("ko-KR") + "원";
+  }
+  function num(s) {
+    var n = parseInt(s, 10);
+    return isNaN(n) ? (s || "—") : n.toLocaleString("ko-KR");
+  }
+
+  function fetchAssets() {
+    fetch("/api/assets")
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var errEl = document.getElementById("assets-error");
+        if (d.error) {
+          if (errEl) { errEl.style.display = ""; errEl.textContent = d.error; }
+          return;
+        }
+        if (errEl) errEl.style.display = "none";
+        assetsLoaded = true;
+
+        var s = d.summary || {};
+        var pnl = parseInt(s.pnl_amt, 10) || 0;
+        var pnlEl = document.getElementById("ac-pnl");
+
+        setText("ac-total", krw(s.total_amt));
+        setText("ac-cash",  krw(s.cash_amt));
+        setText("ac-buy",   "매입금액 " + krw(s.buy_amt));
+        if (pnlEl) {
+          pnlEl.textContent = (pnl >= 0 ? "+" : "") + krw(s.pnl_amt);
+          pnlEl.className = "ac-value " + (pnl >= 0 ? "pos" : "neg");
+        }
+
+        var tbody = document.getElementById("holdings-body");
+        var tbl   = document.getElementById("holdings-tbl");
+        var empty = document.getElementById("holdings-empty");
+        if (!tbody) return;
+
+        var holdings = d.holdings || [];
+        if (holdings.length === 0) {
+          if (tbl)   tbl.style.display   = "none";
+          if (empty) empty.style.display = "";
+        } else {
+          if (tbl)   tbl.style.display   = "";
+          if (empty) empty.style.display = "none";
+          tbody.innerHTML = holdings.map(function (h) {
+            var rate = parseFloat(h.pnl_rate) || 0;
+            var cls  = rate >= 0 ? "pnl-pos" : "pnl-neg";
+            var sign = rate >= 0 ? "+" : "";
+            var pnlAmt = parseInt(h.pnl_amt, 10) || 0;
+            return "<tr>" +
+              "<td><div class='stock-name'>" + h.name + "</div><div class='stock-code'>" + h.code + "</div></td>" +
+              "<td class='r'>" + num(h.qty) + "</td>" +
+              "<td class='r'>" + num(h.avg_price) + "</td>" +
+              "<td class='r'>" + num(h.cur_price) + "</td>" +
+              "<td class='r'>" + krw(h.eval_amt) + "</td>" +
+              "<td class='r " + cls + "'>" + sign + rate.toFixed(2) + "%<br>" +
+                "<span style='font-size:11px;font-weight:600;'>" + (pnlAmt >= 0 ? "+" : "") + krw(h.pnl_amt) + "</span></td>" +
+              "</tr>";
+          }).join("");
+        }
+
+        var ts = document.getElementById("assets-ts");
+        if (ts) ts.textContent = new Date().toLocaleTimeString("ko-KR") + " 기준";
+      })
+      .catch(function () {});
+  }
+
+  function fetchCrypto() {
+    fetch("/api/crypto")
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var errEl = document.getElementById("crypto-error");
+        if (d.error) {
+          if (errEl) { errEl.style.display = ""; errEl.textContent = d.error; }
+          return;
+        }
+        if (errEl) errEl.style.display = "none";
+        cryptoLoaded = true;
+
+        var pnl = parseInt(d.total_pnl, 10) || 0;
+        var pnlEl = document.getElementById("cc-pnl");
+        setText("cc-total", krw(d.total_eval));
+        setText("cc-krw", krw(d.krw_balance));
+        if (pnlEl) {
+          pnlEl.textContent = (pnl >= 0 ? "+" : "") + krw(d.total_pnl);
+          pnlEl.className = "ac-value " + (pnl >= 0 ? "pos" : "neg");
+        }
+
+        var tbody = document.getElementById("crypto-body");
+        var tbl = document.getElementById("crypto-tbl");
+        var empty = document.getElementById("crypto-empty");
+        if (!tbody) return;
+
+        var assets = d.assets || [];
+        if (assets.length === 0) {
+          if (tbl) tbl.style.display = "none";
+          if (empty) empty.style.display = "";
+          tbody.innerHTML = "";
+        } else {
+          if (tbl) tbl.style.display = "";
+          if (empty) empty.style.display = "none";
+          tbody.innerHTML = assets.map(function (c) {
+            var rate = parseFloat(c.pnl_rate) || 0;
+            var cls = rate >= 0 ? "pnl-pos" : "pnl-neg";
+            var sign = rate >= 0 ? "+" : "";
+            var pnlAmt = parseInt(c.pnl_amt, 10) || 0;
+            return "<tr>" +
+              "<td><div class='stock-name'>" + c.currency + "</div><div class='stock-code'>KRW-" + c.currency + "</div></td>" +
+              "<td class='r'>" + c.balance + "</td>" +
+              "<td class='r'>" + num(c.avg_buy_price) + "</td>" +
+              "<td class='r'>" + num(c.cur_price) + "</td>" +
+              "<td class='r'>" + krw(c.eval_amt) + "</td>" +
+              "<td class='r " + cls + "'>" + sign + rate.toFixed(2) + "%<br>" +
+                "<span style='font-size:11px;font-weight:600;'>" + (pnlAmt >= 0 ? "+" : "") + krw(c.pnl_amt) + "</span></td>" +
+              "</tr>";
+          }).join("");
+        }
+
+        var ts = document.getElementById("crypto-ts");
+        if (ts) ts.textContent = new Date().toLocaleTimeString("ko-KR") + " 기준";
+      })
+      .catch(function () {});
+  }
+
+  function setText(id, val) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = val;
+  }
 
   function setTheme(t) {
     root.setAttribute("data-theme", t);
@@ -799,21 +1201,26 @@ var pageTemplate = template.Must(template.New("page").Parse(`<!doctype html>
   function setTab(tab) {
     if (!tabs[tab]) tab = "trader";
     var isHealth = tab === "health";
+    var isAsset  = tab === "asset-manager";
     var inp = document.getElementById("activeTab");
     var cmd = document.getElementById("cmd-section");
     var hp  = document.getElementById("health-panel");
+    var ap  = document.getElementById("assets-panel");
     var pt  = document.getElementById("pageTitle");
     var ps  = document.getElementById("pageSub");
     if (inp) inp.value = tab;
     if (pt)  pt.textContent = tabs[tab].title;
     if (ps)  ps.textContent = tabs[tab].sub;
-    if (cmd) cmd.style.display = isHealth ? "none" : "";
-    if (hp)  hp.style.display  = isHealth ? ""     : "none";
+    if (cmd) cmd.style.display = (isHealth || isAsset) ? "none" : "";
+    if (hp)  hp.style.display  = isHealth ? "" : "none";
+    if (ap)  ap.style.display  = isAsset  ? "" : "none";
     if (isHealth) {
       if (!healthTimer) { fetchHealth(); healthTimer = setInterval(fetchHealth, 2000); }
     } else {
       if (healthTimer) { clearInterval(healthTimer); healthTimer = null; }
     }
+    if (isAsset && !assetsLoaded) fetchAssets();
+    if (isAsset && !cryptoLoaded) fetchCrypto();
     document.querySelectorAll("[data-tab]").forEach(function (el) {
       el.classList.toggle("active", el.getAttribute("data-tab") === tab);
     });
@@ -837,6 +1244,10 @@ var pageTemplate = template.Must(template.New("page").Parse(`<!doctype html>
   if (sb) sb.addEventListener("click", function () {
     setSidebar(!body.classList.contains("sb-collapsed"));
   });
+  var ar = document.getElementById("assetsRefresh");
+  if (ar) ar.addEventListener("click", function () { assetsLoaded = false; fetchAssets(); });
+  var cr = document.getElementById("cryptoRefresh");
+  if (cr) cr.addEventListener("click", function () { cryptoLoaded = false; fetchCrypto(); });
 })();
 </script>
 </body>

@@ -82,6 +82,15 @@ SESSION_SECRET=change-this-long-random-string
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 GOOGLE_REFRESH_TOKEN=
+
+KIS_APP_KEY=
+KIS_APP_SECRET=
+KIS_ACCOUNT_NO=
+KIS_ACCOUNT_PRODUCT=01
+KIS_MOCK=false
+
+UPBIT_ACCESS_KEY=
+UPBIT_SECRET_KEY=
 ```
 
 Start from the example file:
@@ -106,6 +115,13 @@ Values already exported in your shell take precedence over `.env` values.
 | `GOOGLE_CLIENT_ID` | No | OAuth client ID used by Google API wrappers. |
 | `GOOGLE_CLIENT_SECRET` | No | OAuth client secret used by Google API wrappers. |
 | `GOOGLE_REFRESH_TOKEN` | No | OAuth refresh token with the required Google API scopes. |
+| `KIS_APP_KEY` | No | 한국투자증권 KIS Developers app key for domestic stock balance lookup. |
+| `KIS_APP_SECRET` | No | 한국투자증권 KIS Developers app secret. |
+| `KIS_ACCOUNT_NO` | No | KIS account number prefix used for balance lookup. |
+| `KIS_ACCOUNT_PRODUCT` | No | KIS account product code. Defaults to `01`. |
+| `KIS_MOCK` | No | When `true`, uses KIS mock trading transaction IDs. |
+| `UPBIT_ACCESS_KEY` | No | Upbit Open API access key for crypto balance lookup. |
+| `UPBIT_SECRET_KEY` | No | Upbit Open API secret key. |
 
 If `NAVER_ALLOWED_IDS` is empty, any Naver account that completes login can access the app. For a private OpenClaw console, set it after confirming your Naver profile ID in the app header.
 
@@ -161,6 +177,13 @@ The selected workspace is sent to OpenClaw as command context:
 [Asset Manager]
 ...
 ```
+
+Asset Manager also shows connected portfolio balances:
+
+| Route | Method | Purpose |
+| --- | --- | --- |
+| `/api/assets` | `GET` | KIS domestic stock account balance and holdings. |
+| `/api/crypto` | `GET` | Upbit KRW balance and crypto holdings. |
 
 ## Google API Wrappers
 
