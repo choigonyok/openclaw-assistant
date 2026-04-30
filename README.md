@@ -90,12 +90,12 @@ DEV=false
 OPENCLAW_BASE_URL=http://localhost:18789
 OPENCLAW_TOKEN=
 
-FRONTEND_URL=http://localhost:5173
+FRONTEND_URL=
 CORS_ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000
 
 NAVER_CLIENT_ID=
 NAVER_CLIENT_SECRET=
-NAVER_REDIRECT_URL=https://choigonyok.com/auth/naver/callback
+NAVER_REDIRECT_URL=https://agent.choigonyok.com/auth/naver/callback
 NAVER_ALLOWED_IDS=
 
 SESSION_SECRET=change-this-long-random-string
@@ -128,7 +128,7 @@ Values already exported in your shell take precedence over `.env` values.
 | `DEV` | No | When `true`, bypasses Naver Login and uses a local development user. |
 | `OPENCLAW_BASE_URL` | No | OpenClaw Gateway URL. Defaults to `http://localhost:18789`. |
 | `OPENCLAW_TOKEN` | No | Bearer token sent to OpenClaw when set. |
-| `FRONTEND_URL` | No | URL to redirect to after Naver login/logout. Defaults to `http://localhost:5173`. |
+| `FRONTEND_URL` | No | URL to redirect to after Naver login/logout. When empty, redirects to `/` on the current frontend origin. |
 | `CORS_ALLOWED_ORIGINS` | No | Comma-separated React UI origins allowed to call the API with cookies. |
 | `NAVER_CLIENT_ID` | Yes | Client ID from Naver Developers. |
 | `NAVER_CLIENT_SECRET` | Yes | Client secret from Naver Developers. |
@@ -153,14 +153,10 @@ If `NAVER_ALLOWED_IDS` is empty, any Naver account that completes login can acce
 Register this callback URL in Naver Developers for production:
 
 ```txt
-https://choigonyok.com/auth/naver/callback
+https://agent.choigonyok.com/auth/naver/callback
 ```
 
-If you use a subdomain, register that exact URL instead:
-
-```txt
-https://assistant.choigonyok.com/auth/naver/callback
-```
+The public deployment uses this domain even though the service is forwarded to localhost internally.
 
 For local development, also register:
 
