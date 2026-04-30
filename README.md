@@ -1,20 +1,19 @@
 # openclaw-assistant
 
-Private web console for sending authenticated commands to a local OpenClaw Gateway.
+Private API server for the OpenClaw Assistant console.
 
-`openclaw-assistant` is a small Go web application designed to run beside OpenClaw on a Mac mini or home server. It exposes a browser UI, protects it with Naver Login, and forwards commands to the local OpenClaw Gateway without exposing the gateway itself to the internet.
+`openclaw-assistant` is a small Go API service designed to run beside OpenClaw on a Mac mini or home server. The React frontend now lives in `../openclaw-assistant-ui`; this service protects API calls with Naver Login and forwards commands to the local OpenClaw Gateway without exposing the gateway itself to the internet.
 
 ## Features
 
-- Go standard-library web server
+- Go standard-library API server
 - Naver OAuth login
 - Signed HTTP-only session cookies
 - Optional allowlist for specific Naver profile IDs
 - OpenClaw Gateway command forwarding
 - AdSense, Search Console, and Google Analytics API wrappers for AI-safe operations
 - Trader, Website Builder, and Asset Manager workspaces
-- Collapsible left sidebar
-- Light and dark mode
+- React frontend in `openclaw-assistant-ui`
 - Health check endpoint
 - Makefile for local development, tests, and builds
 
@@ -22,9 +21,9 @@ Private web console for sending authenticated commands to a local OpenClaw Gatew
 
 ```txt
 Browser
-  -> https://assistant.choigonyok.com
-  -> Tunnel / reverse proxy
+  -> openclaw-assistant-ui :3000 or :5173
   -> openclaw-assistant :8080
+  -> Tunnel / reverse proxy
   -> OpenClaw Gateway :18789
 ```
 
@@ -44,10 +43,29 @@ cp .env.example .env
 make dev
 ```
 
-Open:
+Open the API:
 
 ```txt
 http://localhost:8080
+```
+
+Run the React UI from `../openclaw-assistant-ui`:
+
+```sh
+npm install
+npm run dev
+```
+
+Open:
+
+```txt
+http://localhost:5173
+```
+
+Run both with Docker Compose from the parent `openclaw` directory:
+
+```sh
+docker compose up --build
 ```
 
 Run tests:
@@ -71,6 +89,9 @@ PORT=8080
 DEV=false
 OPENCLAW_BASE_URL=http://localhost:18789
 OPENCLAW_TOKEN=
+
+FRONTEND_URL=http://localhost:5173
+CORS_ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000
 
 NAVER_CLIENT_ID=
 NAVER_CLIENT_SECRET=
@@ -107,6 +128,8 @@ Values already exported in your shell take precedence over `.env` values.
 | `DEV` | No | When `true`, bypasses Naver Login and uses a local development user. |
 | `OPENCLAW_BASE_URL` | No | OpenClaw Gateway URL. Defaults to `http://localhost:18789`. |
 | `OPENCLAW_TOKEN` | No | Bearer token sent to OpenClaw when set. |
+| `FRONTEND_URL` | No | URL to redirect to after Naver login/logout. Defaults to `http://localhost:5173`. |
+| `CORS_ALLOWED_ORIGINS` | No | Comma-separated React UI origins allowed to call the API with cookies. |
 | `NAVER_CLIENT_ID` | Yes | Client ID from Naver Developers. |
 | `NAVER_CLIENT_SECRET` | Yes | Client secret from Naver Developers. |
 | `NAVER_REDIRECT_URL` | Yes | OAuth callback URL registered with Naver. |
@@ -155,13 +178,13 @@ The app uses these routes:
 
 ## Workspaces
 
-The left sidebar includes three workspaces:
+The React frontend includes these workspaces:
 
 - `Trader`
 - `Website Builder`
 - `Asset Manager`
 
-The selected workspace is sent to OpenClaw as command context:
+The selected workspace is sent to OpenClaw through `POST /api/command` as command context:
 
 ```txt
 [Trader]
@@ -182,6 +205,8 @@ Asset Manager also shows connected portfolio balances:
 
 | Route | Method | Purpose |
 | --- | --- | --- |
+| `/api/session` | `GET` | Current session and login/logout URLs. |
+| `/api/command` | `POST` | Send a tab-scoped command to OpenClaw Gateway. |
 | `/api/assets` | `GET` | KIS domestic stock account balance and holdings. |
 | `/api/crypto` | `GET` | Upbit KRW balance and crypto holdings. |
 

@@ -33,8 +33,8 @@ func TestHandlerSendsCommand(t *testing.T) {
 	})
 	handler := newTestHandler(client, auth)
 
-	req := httptest.NewRequest(http.MethodPost, "/command", strings.NewReader("tab=builder&command=hello"))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req := httptest.NewRequest(http.MethodPost, "/api/command", strings.NewReader(`{"tab":"builder","command":"hello"}`))
+	req.Header.Set("Content-Type", "application/json")
 	sessionValue, err := auth.sign(sessionPayload{
 		User:      User{ID: "naver-user"},
 		ExpiresAt: time.Now().AddDate(0, 0, 1),
@@ -50,7 +50,7 @@ func TestHandlerSendsCommand(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)
 	}
-	if !strings.Contains(rec.Body.String(), "done") {
+	if !strings.Contains(rec.Body.String(), `"reply":"done"`) {
 		t.Fatalf("response body does not include reply: %q", rec.Body.String())
 	}
 	if got, want := client.command, "[Website Builder]\nhello"; got != want {
@@ -66,8 +66,8 @@ func TestHandlerAllowsCommandInDevMode(t *testing.T) {
 	})
 	handler := newTestHandler(client, auth)
 
-	req := httptest.NewRequest(http.MethodPost, "/command", strings.NewReader("tab=trader&command=buy signal"))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req := httptest.NewRequest(http.MethodPost, "/api/command", strings.NewReader(`{"tab":"trader","command":"buy signal"}`))
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
@@ -88,8 +88,8 @@ func TestHandlerSendsAssetManagerCommand(t *testing.T) {
 	})
 	handler := newTestHandler(client, auth)
 
-	req := httptest.NewRequest(http.MethodPost, "/command", strings.NewReader("tab=asset-manager&command=list assets"))
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req := httptest.NewRequest(http.MethodPost, "/api/command", strings.NewReader(`{"tab":"asset-manager","command":"list assets"}`))
+	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
@@ -120,7 +120,7 @@ func TestGoogleStatusInDevMode(t *testing.T) {
 		ClientID:     "client",
 		ClientSecret: "secret",
 		RefreshToken: "refresh",
-	}), NewKISClient("", "", "", "", false), NewUpbitClient("", ""))
+	}), NewKISClient("", "", "", "", false), NewUpbitClient("", ""), apiHandlerConfig{})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/google/status", nil)
 	rec := httptest.NewRecorder()
@@ -190,7 +190,7 @@ type fakeSender struct {
 }
 
 func newTestHandler(client commandSender, auth *AuthService) http.Handler {
-	return NewHandler(client, auth, NewGoogleService(GoogleConfig{}), NewKISClient("", "", "", "", false), NewUpbitClient("", ""))
+	return NewHandler(client, auth, NewGoogleService(GoogleConfig{}), NewKISClient("", "", "", "", false), NewUpbitClient("", ""), apiHandlerConfig{})
 }
 
 func (f *fakeSender) SendCommand(_ context.Context, command string) (string, error) {

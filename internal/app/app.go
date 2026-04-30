@@ -42,7 +42,7 @@ func Run(ctx context.Context, args []string, out io.Writer) error {
 	upbit := NewUpbitClient(cfg.UpbitAccessKey, cfg.UpbitSecretKey)
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           NewHandler(NewOpenClawClient(cfg.OpenClawBaseURL, cfg.OpenClawToken), auth, google, kis, upbit),
+		Handler:           NewHandler(NewOpenClawClient(cfg.OpenClawBaseURL, cfg.OpenClawToken), auth, google, kis, upbit, apiHandlerConfig{FrontendURL: cfg.FrontendURL, CORSOrigins: cfg.CORSAllowedOrigins}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -117,6 +117,8 @@ type Config struct {
 	GoogleClientID     string
 	GoogleClientSecret string
 	GoogleRefreshToken string
+	FrontendURL        string
+	CORSAllowedOrigins []string
 	Dev                bool
 	KISAppKey          string
 	KISAppSecret       string
@@ -140,6 +142,8 @@ func ConfigFromEnv() Config {
 		GoogleClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
 		GoogleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
 		GoogleRefreshToken: os.Getenv("GOOGLE_REFRESH_TOKEN"),
+		FrontendURL:        envOrDefault("FRONTEND_URL", "http://localhost:5173"),
+		CORSAllowedOrigins: splitCSV(envOrDefault("CORS_ALLOWED_ORIGINS", "http://localhost:5173,http://localhost:3000")),
 		Dev:                envBool("DEV"),
 		KISAppKey:          os.Getenv("KIS_APP_KEY"),
 		KISAppSecret:       os.Getenv("KIS_APP_SECRET"),

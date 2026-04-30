@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"net/http"
 	"net/url"
@@ -88,12 +89,15 @@ func (c *UpbitClient) GetAssets() (*CryptoResult, error) {
 		return nil, fmt.Errorf("계좌 조회 실패: %w", err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("계좌 조회 실패: %s", upbitErrorMessage(resp))
+	}
 
 	var accounts []struct {
-		Currency    string `json:"currency"`
-		Balance     string `json:"balance"`
-		Locked      string `json:"locked"`
-		AvgBuyPrice string `json:"avg_buy_price"`
+		Currency     string `json:"currency"`
+		Balance      string `json:"balance"`
+		Locked       string `json:"locked"`
+		AvgBuyPrice  string `json:"avg_buy_price"`
 		UnitCurrency string `json:"unit_currency"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&accounts); err != nil {
@@ -108,6 +112,7 @@ func (c *UpbitClient) GetAssets() (*CryptoResult, error) {
 		total    float64
 		avg      float64
 	}
+	validKRWMarkets := fetchUpbitKRWMarkets()
 	var coins []coinInfo
 	var markets []string
 
@@ -125,7 +130,10 @@ func (c *UpbitClient) GetAssets() (*CryptoResult, error) {
 		}
 		avg, _ := strconv.ParseFloat(acc.AvgBuyPrice, 64)
 		coins = append(coins, coinInfo{acc.Currency, total, avg})
-		markets = append(markets, "KRW-"+acc.Currency)
+		market := "KRW-" + acc.Currency
+		if validKRWMarkets[market] {
+			markets = append(markets, market)
+		}
 	}
 
 	// 현재가 일괄 조회
@@ -135,6 +143,9 @@ func (c *UpbitClient) GetAssets() (*CryptoResult, error) {
 		tr, err := http.Get(tickerURL)
 		if err == nil {
 			defer tr.Body.Close()
+			if tr.StatusCode < 200 || tr.StatusCode >= 300 {
+				return nil, fmt.Errorf("현재가 조회 실패: %s", upbitErrorMessage(tr))
+			}
 			var tickers []struct {
 				Market     string  `json:"market"`
 				TradePrice float64 `json:"trade_price"`
@@ -179,4 +190,43 @@ func (c *UpbitClient) GetAssets() (*CryptoResult, error) {
 	result.TotalEval = fmt.Sprintf("%.0f", totalEval)
 	result.TotalPnl = fmt.Sprintf("%.0f", math.Round(totalPnl))
 	return result, nil
+}
+
+func fetchUpbitKRWMarkets() map[string]bool {
+	markets := map[string]bool{}
+	resp, err := http.Get(upbitBaseURL + "/market/all")
+	if err != nil {
+		return markets
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return markets
+	}
+
+	var listed []struct {
+		Market string `json:"market"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&listed); err != nil {
+		return markets
+	}
+	for _, item := range listed {
+		if strings.HasPrefix(item.Market, "KRW-") {
+			markets[item.Market] = true
+		}
+	}
+	return markets
+}
+
+func upbitErrorMessage(resp *http.Response) string {
+	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	var body struct {
+		Error struct {
+			Name    interface{} `json:"name"`
+			Message string      `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(raw, &body); err == nil && body.Error.Message != "" {
+		return body.Error.Message
+	}
+	return strings.TrimSpace(string(raw))
 }
