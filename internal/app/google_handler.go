@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -206,7 +207,9 @@ func handleGoogleAnalyticsRunReport(google *GoogleService, auth *AuthService) ht
 			writeAPIError(w, http.StatusBadRequest, "property_id and query are required")
 			return
 		}
-		payload, err := google.AnalyticsRunReport(r.Context(), req.PropertyID, req.Query)
+		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+		defer cancel()
+		payload, err := google.AnalyticsRunReport(ctx, req.PropertyID, req.Query)
 		writeGoogleResult(w, payload, err)
 	}
 }

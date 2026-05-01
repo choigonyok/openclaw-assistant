@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -37,7 +38,19 @@ func NewHandler(client commandSender, auth *AuthService, google *GoogleService, 
 		_, _ = w.Write([]byte("ok\n"))
 	})
 	mux.Handle("/api/think/", NewThinkHandler(r2))
-	return withCORS(mux, cfg.CORSOrigins)
+	return withRecover(withCORS(mux, cfg.CORSOrigins))
+}
+
+func withRecover(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				log.Printf("[panic] %s %s: %v", r.Method, r.URL.Path, recovered)
+				writeAPIError(w, http.StatusInternalServerError, "internal server error")
+			}
+		}()
+		next.ServeHTTP(w, r)
+	})
 }
 
 type SiteInfo struct {
