@@ -21,6 +21,12 @@ type R2Client struct {
 	bucket string
 }
 
+type thinkJSONStore interface {
+	Enabled() bool
+	GetJSON(ctx context.Context, key string, v any) error
+	PutJSON(ctx context.Context, key string, v any) error
+}
+
 func NewR2Client(accountID, accessKeyID, secretAccessKey, bucket string) (*R2Client, error) {
 	endpoint := fmt.Sprintf("https://%s.r2.cloudflarestorage.com", accountID)
 
@@ -79,20 +85,24 @@ func (r *R2Client) PutJSON(ctx context.Context, key string, v any) error {
 // ── API handlers ──────────────────────────────────────────────
 
 func NewThinkHandler(r2 *R2Client) http.Handler {
-	if !r2.Enabled() {
+	return newThinkHandler(r2)
+}
+
+func newThinkHandler(store thinkJSONStore) http.Handler {
+	if store == nil || !store.Enabled() {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "think storage is not configured"})
 		})
 	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/think/categories", handleThinkCategories(r2))
-	mux.HandleFunc("/api/think/dilemmas/", handleThinkDilemmas(r2))
-	mux.HandleFunc("/api/think/dilemma/", handleThinkDilemma(r2))
-	mux.HandleFunc("/api/think/votes/", handleThinkVotes(r2))
+	mux.HandleFunc("/api/think/categories", handleThinkCategories(store))
+	mux.HandleFunc("/api/think/dilemmas/", handleThinkDilemmas(store))
+	mux.HandleFunc("/api/think/dilemma/", handleThinkDilemma(store))
+	mux.HandleFunc("/api/think/votes/", handleThinkVotes(store))
 	return mux
 }
 
-func handleThinkCategories(r2 *R2Client) http.HandlerFunc {
+func handleThinkCategories(store thinkJSONStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
@@ -102,7 +112,7 @@ func handleThinkCategories(r2 *R2Client) http.HandlerFunc {
 		defer cancel()
 
 		var categories []map[string]any
-		if err := r2.GetJSON(ctx, "think/categories.json", &categories); err != nil {
+		if err := store.GetJSON(ctx, "think/categories.json", &categories); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
@@ -110,7 +120,7 @@ func handleThinkCategories(r2 *R2Client) http.HandlerFunc {
 	}
 }
 
-func handleThinkDilemmas(r2 *R2Client) http.HandlerFunc {
+func handleThinkDilemmas(store thinkJSONStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
@@ -125,7 +135,7 @@ func handleThinkDilemmas(r2 *R2Client) http.HandlerFunc {
 		defer cancel()
 
 		var dilemmas []map[string]any
-		if err := r2.GetJSON(ctx, "think/dilemmas/"+categoryID+".json", &dilemmas); err != nil {
+		if err := store.GetJSON(ctx, "think/dilemmas/"+categoryID+".json", &dilemmas); err != nil {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "category not found"})
 			return
 		}
@@ -133,7 +143,7 @@ func handleThinkDilemmas(r2 *R2Client) http.HandlerFunc {
 	}
 }
 
-func handleThinkDilemma(r2 *R2Client) http.HandlerFunc {
+func handleThinkDilemma(store thinkJSONStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
@@ -157,7 +167,7 @@ func handleThinkDilemma(r2 *R2Client) http.HandlerFunc {
 		categoryID, itemID := parts[0], parts[1]
 
 		var dilemmas []map[string]any
-		if err := r2.GetJSON(ctx, "think/dilemmas/"+categoryID+".json", &dilemmas); err != nil {
+		if err := store.GetJSON(ctx, "think/dilemmas/"+categoryID+".json", &dilemmas); err != nil {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "category not found"})
 			return
 		}
@@ -186,7 +196,7 @@ func validThinkVotePath(path string) bool {
 	return thinkPathPattern.MatchString(path)
 }
 
-func handleThinkVotes(r2 *R2Client) http.HandlerFunc {
+func handleThinkVotes(store thinkJSONStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// /api/think/votes/{categoryId}/{dilemmaId}
 		path := strings.TrimPrefix(r.URL.Path, "/api/think/votes/")
@@ -206,7 +216,7 @@ func handleThinkVotes(r2 *R2Client) http.HandlerFunc {
 		switch r.Method {
 		case http.MethodGet:
 			var v votes
-			if err := r2.GetJSON(ctx, key, &v); err != nil {
+			if err := store.GetJSON(ctx, key, &v); err != nil {
 				// 아직 투표 없으면 0,0 반환
 				writeJSON(w, http.StatusOK, votes{A: 0, B: 0})
 				return
@@ -225,7 +235,10 @@ func handleThinkVotes(r2 *R2Client) http.HandlerFunc {
 			}
 
 			var v votes
-			_ = r2.GetJSON(ctx, key, &v) // 없으면 0,0으로 시작
+			if err := store.GetJSON(ctx, key, &v); err != nil {
+				// R2/S3는 디렉토리 개념이 없어서 첫 투표 때 객체를 생성한다.
+				v = votes{A: 0, B: 0}
+			}
 
 			if payload.Option == "a" {
 				v.A++
@@ -233,7 +246,7 @@ func handleThinkVotes(r2 *R2Client) http.HandlerFunc {
 				v.B++
 			}
 
-			if err := r2.PutJSON(ctx, key, v); err != nil {
+			if err := store.PutJSON(ctx, key, v); err != nil {
 				writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 				return
 			}

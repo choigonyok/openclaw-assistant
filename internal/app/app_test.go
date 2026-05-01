@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -236,10 +237,67 @@ func TestValidThinkVotePath(t *testing.T) {
 	}
 }
 
+func TestThinkVotePostCreatesMissingVoteObject(t *testing.T) {
+	store := &fakeThinkStore{objects: map[string][]byte{}}
+	handler := handleThinkVotes(store)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/think/votes/ethics/trolley-problem", strings.NewReader(`{"option":"b"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	key := "think/votes/ethics/trolley-problem.json"
+	raw, ok := store.objects[key]
+	if !ok {
+		t.Fatalf("vote object %q was not created", key)
+	}
+
+	var got votes
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatalf("created vote object is invalid json: %v", err)
+	}
+	if got.A != 0 || got.B != 1 {
+		t.Fatalf("votes = %+v, want {A:0 B:1}", got)
+	}
+}
+
 type fakeSender struct {
 	reply   string
 	err     error
 	command string
+}
+
+type fakeThinkStore struct {
+	objects map[string][]byte
+}
+
+func (f *fakeThinkStore) Enabled() bool {
+	return true
+}
+
+func (f *fakeThinkStore) GetJSON(_ context.Context, key string, v any) error {
+	data, ok := f.objects[key]
+	if !ok {
+		return os.ErrNotExist
+	}
+	return json.Unmarshal(data, v)
+}
+
+func (f *fakeThinkStore) PutJSON(_ context.Context, key string, v any) error {
+	if f.objects == nil {
+		f.objects = map[string][]byte{}
+	}
+	data, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	f.objects[key] = data
+	return nil
 }
 
 func newTestHandler(client commandSender, auth *AuthService) http.Handler {
