@@ -242,7 +242,7 @@ func decodeJSONBody(w http.ResponseWriter, r *http.Request, v any) bool {
 
 func writeGoogleResult(w http.ResponseWriter, payload json.RawMessage, err error) {
 	if err != nil {
-		status := http.StatusBadGateway
+		status := http.StatusFailedDependency
 		if strings.Contains(err.Error(), "not configured") {
 			status = http.StatusServiceUnavailable
 		}
