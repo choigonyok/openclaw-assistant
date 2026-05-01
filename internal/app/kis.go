@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -26,9 +28,7 @@ type KISClient struct {
 }
 
 func NewKISClient(appKey, appSecret, accountNo, accountProduct string, isMock bool) *KISClient {
-	if accountProduct == "" {
-		accountProduct = "01"
-	}
+	accountNo, accountProduct = normalizeKISAccount(accountNo, accountProduct)
 	return &KISClient{
 		appKey:         appKey,
 		appSecret:      appSecret,
@@ -36,6 +36,23 @@ func NewKISClient(appKey, appSecret, accountNo, accountProduct string, isMock bo
 		accountProduct: accountProduct,
 		isMock:         isMock,
 	}
+}
+
+func normalizeKISAccount(accountNo, accountProduct string) (string, string) {
+	accountNo = strings.TrimSpace(accountNo)
+	accountProduct = strings.TrimSpace(accountProduct)
+	compact := strings.NewReplacer("-", "", " ", "").Replace(accountNo)
+
+	if len(compact) >= 10 {
+		if accountProduct == "" {
+			accountProduct = compact[8:10]
+		}
+		compact = compact[:8]
+	}
+	if accountProduct == "" {
+		accountProduct = "01"
+	}
+	return compact, accountProduct
 }
 
 func (c *KISClient) Enabled() bool {
@@ -90,16 +107,45 @@ type Holding struct {
 }
 
 type BalanceSummary struct {
-	CashAmt  string `json:"cash_amt"`
-	StockAmt string `json:"stock_amt"`
-	TotalAmt string `json:"total_amt"`
-	BuyAmt   string `json:"buy_amt"`
-	PnlAmt   string `json:"pnl_amt"`
+	CashAmt    string `json:"cash_amt"`
+	CashKRW    string `json:"cash_krw"`
+	CashUSD    string `json:"cash_usd"`
+	CashUSDKRW string `json:"cash_usd_krw"`
+	StockAmt   string `json:"stock_amt"`
+	TotalAmt   string `json:"total_amt"`
+	BuyAmt     string `json:"buy_amt"`
+	PnlAmt     string `json:"pnl_amt"`
 }
 
 type BalanceResult struct {
 	Holdings []Holding      `json:"holdings"`
 	Summary  BalanceSummary `json:"summary"`
+}
+
+type kisForeignCashRow struct {
+	Currency       string `json:"crcy_cd"`
+	ForeignCash    string `json:"frcr_dncl_amt_2"`
+	ForeignUsable  string `json:"frcr_use_psbl_amt"`
+	ForeignBalance string `json:"tot_frcr_cblc_smtl"`
+	ForeignKRW     string `json:"frcr_evlu_amt2"`
+	BaseRate       string `json:"bass_exrt"`
+}
+
+type kisForeignCashRows []kisForeignCashRow
+
+func (r *kisForeignCashRows) UnmarshalJSON(data []byte) error {
+	var rows []kisForeignCashRow
+	if err := json.Unmarshal(data, &rows); err == nil {
+		*r = rows
+		return nil
+	}
+
+	var row kisForeignCashRow
+	if err := json.Unmarshal(data, &row); err != nil {
+		return err
+	}
+	*r = []kisForeignCashRow{row}
+	return nil
 }
 
 func (c *KISClient) GetBalance() (*BalanceResult, error) {
@@ -162,10 +208,10 @@ func (c *KISClient) GetBalance() (*BalanceResult, error) {
 			EvluPflsRt  string `json:"evlu_pfls_rt"`
 		} `json:"output1"`
 		Output2 []struct {
-			DncaTotAmt     string `json:"dnca_tot_amt"`
-			SctsEvluAmt    string `json:"scts_evlu_amt"`
-			TotEvluAmt     string `json:"tot_evlu_amt"`
-			PchsAmtSmtlAmt string `json:"pchs_amt_smtl_amt"`
+			DncaTotAmt      string `json:"dnca_tot_amt"`
+			SctsEvluAmt     string `json:"scts_evlu_amt"`
+			TotEvluAmt      string `json:"tot_evlu_amt"`
+			PchsAmtSmtlAmt  string `json:"pchs_amt_smtl_amt"`
 			EvluPflsSmtlAmt string `json:"evlu_pfls_smtl_amt"`
 		} `json:"output2"`
 	}
@@ -196,11 +242,108 @@ func (c *KISClient) GetBalance() (*BalanceResult, error) {
 		o := res.Output2[0]
 		result.Summary = BalanceSummary{
 			CashAmt:  o.DncaTotAmt,
+			CashKRW:  o.DncaTotAmt,
 			StockAmt: o.SctsEvluAmt,
 			TotalAmt: o.TotEvluAmt,
 			BuyAmt:   o.PchsAmtSmtlAmt,
 			PnlAmt:   o.EvluPflsSmtlAmt,
 		}
 	}
+	usdCash, usdCashKRW := c.getUSDCash(token)
+	result.Summary.CashUSD = usdCash
+	result.Summary.CashUSDKRW = usdCashKRW
 	return result, nil
+}
+
+func (c *KISClient) getUSDCash(token string) (string, string) {
+	trID := "CTRP6504R"
+	if c.isMock {
+		trID = "VTRP6504R"
+	}
+
+	params := url.Values{}
+	params.Set("CANO", c.accountNo)
+	params.Set("ACNT_PRDT_CD", c.accountProduct)
+	params.Set("WCRC_FRCR_DVSN_CD", "02")
+	params.Set("NATN_CD", "840")
+	params.Set("TR_MKET_CD", "00")
+	params.Set("INQR_DVSN_CD", "00")
+
+	req, err := http.NewRequest("GET", kisBaseURL+"/uapi/overseas-stock/v1/trading/inquire-present-balance?"+params.Encode(), nil)
+	if err != nil {
+		return "", ""
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("appkey", c.appKey)
+	req.Header.Set("appsecret", c.appSecret)
+	req.Header.Set("tr_id", trID)
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	req.Header.Set("custtype", "P")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", ""
+	}
+	defer resp.Body.Close()
+
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", ""
+	}
+
+	var res struct {
+		MsgCode string             `json:"msg_cd"`
+		Output2 kisForeignCashRows `json:"output2"`
+		Output3 kisForeignCashRows `json:"output3"`
+	}
+	if err := json.Unmarshal(raw, &res); err != nil || (res.MsgCode != "" && res.MsgCode != "MCA00000") {
+		return "", ""
+	}
+	return pickUSDCash(append(res.Output2, res.Output3...))
+}
+
+func pickUSDCash(rows []kisForeignCashRow) (string, string) {
+	for _, row := range rows {
+		if strings.EqualFold(row.Currency, "USD") {
+			return row.cashAndKRW()
+		}
+	}
+	for _, row := range rows {
+		cash, krw := row.cashAndKRW()
+		if cash != "" {
+			return cash, krw
+		}
+	}
+	return "", ""
+}
+
+func (r kisForeignCashRow) cashAndKRW() (string, string) {
+	cash := firstNonEmpty(r.ForeignCash, r.ForeignUsable, r.ForeignBalance)
+	krw := firstNonEmpty(r.ForeignKRW)
+	if krw == "" {
+		amount, amountOK := parseKISFloat(cash)
+		rate, rateOK := parseKISFloat(r.BaseRate)
+		if amountOK && rateOK {
+			krw = fmt.Sprintf("%.0f", amount*rate)
+		}
+	}
+	return cash, krw
+}
+
+func parseKISFloat(value string) (float64, bool) {
+	value = strings.ReplaceAll(strings.TrimSpace(value), ",", "")
+	if value == "" {
+		return 0, false
+	}
+	n, err := strconv.ParseFloat(value, 64)
+	return n, err == nil
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
