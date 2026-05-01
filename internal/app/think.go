@@ -136,16 +136,18 @@ func handleThinkDilemmas(store thinkJSONStore) http.HandlerFunc {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 			return
 		}
-		categoryID := strings.TrimPrefix(r.URL.Path, "/api/think/dilemmas/")
-		if categoryID == "" {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "category id required"})
+		remainder := strings.TrimPrefix(r.URL.Path, "/api/think/dilemmas/")
+		parts := strings.SplitN(remainder, "/", 2)
+		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "topic and category id required"})
 			return
 		}
+		topicID, categoryID := parts[0], parts[1]
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		defer cancel()
 
 		var dilemmas []map[string]any
-		if err := store.GetJSON(ctx, "think/dilemmas/"+categoryID+".json", &dilemmas); err != nil {
+		if err := store.GetJSON(ctx, "think/dilemmas/"+topicID+"/"+categoryID+".json", &dilemmas); err != nil {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "category not found"})
 			return
 		}
@@ -167,17 +169,17 @@ func handleThinkDilemma(store thinkJSONStore) http.HandlerFunc {
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		defer cancel()
 
-		// dilemmaID 형식: "{categoryId}/{dilemmaId}"
-		// 예: ethics/trolley-problem
-		parts := strings.SplitN(dilemmaID, "/", 2)
-		if len(parts) != 2 {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid dilemma id format, use {categoryId}/{dilemmaId}"})
+		// dilemmaID 형식: "{topicId}/{categoryId}/{dilemmaId}"
+		// 예: philosophy/ethics/trolley-problem
+		parts := strings.SplitN(dilemmaID, "/", 3)
+		if len(parts) != 3 {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid dilemma id format, use {topicId}/{categoryId}/{dilemmaId}"})
 			return
 		}
-		categoryID, itemID := parts[0], parts[1]
+		topicID, categoryID, itemID := parts[0], parts[1], parts[2]
 
 		var dilemmas []map[string]any
-		if err := store.GetJSON(ctx, "think/dilemmas/"+categoryID+".json", &dilemmas); err != nil {
+		if err := store.GetJSON(ctx, "think/dilemmas/"+topicID+"/"+categoryID+".json", &dilemmas); err != nil {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "category not found"})
 			return
 		}
@@ -200,7 +202,7 @@ type votes struct {
 	B int `json:"b"`
 }
 
-var thinkPathPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*/[a-zA-Z0-9][a-zA-Z0-9_-]*$`)
+var thinkPathPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*/[a-zA-Z0-9][a-zA-Z0-9_-]*/[a-zA-Z0-9][a-zA-Z0-9_-]*$`)
 
 func validThinkVotePath(path string) bool {
 	return thinkPathPattern.MatchString(path)

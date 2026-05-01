@@ -26,9 +26,10 @@ func Run(ctx context.Context, args []string, out io.Writer) error {
 
 	cfg := ConfigFromEnv()
 	google := NewGoogleService(GoogleConfig{
-		ClientID:     cfg.GoogleClientID,
-		ClientSecret: cfg.GoogleClientSecret,
-		RefreshToken: cfg.GoogleRefreshToken,
+		ClientID:            cfg.GoogleClientID,
+		ClientSecret:        cfg.GoogleClientSecret,
+		RefreshToken:        cfg.GoogleRefreshToken,
+		AnalyticsPropertyID: cfg.GoogleAnalyticsPropertyID,
 	})
 	auth := NewAuthService(AuthConfig{
 		ClientID:     cfg.NaverClientID,
@@ -121,62 +122,64 @@ func LoadDotEnv(path string) error {
 }
 
 type Config struct {
-	Port               string
-	OpenClawBaseURL    string
-	OpenClawToken      string
-	NaverClientID      string
-	NaverClientSecret  string
-	NaverRedirectURL   string
-	SessionSecret      string
-	NaverAllowedIDs    []string
-	GoogleClientID     string
-	GoogleClientSecret string
-	GoogleRefreshToken string
-	FrontendURL        string
-	CORSAllowedOrigins []string
-	Dev                bool
-	KISAppKey          string
-	KISAppSecret       string
-	KISAccountNo       string
-	KISAccountProduct  string
-	KISMock            bool
-	UpbitAccessKey     string
-	UpbitSecretKey     string
-	R2AccountID        string
-	R2AccessKeyID      string
-	R2SecretAccessKey  string
-	R2BucketName       string
-	CFAPIToken         string
+	Port                      string
+	OpenClawBaseURL           string
+	OpenClawToken             string
+	NaverClientID             string
+	NaverClientSecret         string
+	NaverRedirectURL          string
+	SessionSecret             string
+	NaverAllowedIDs           []string
+	GoogleClientID            string
+	GoogleClientSecret        string
+	GoogleRefreshToken        string
+	GoogleAnalyticsPropertyID string
+	FrontendURL               string
+	CORSAllowedOrigins        []string
+	Dev                       bool
+	KISAppKey                 string
+	KISAppSecret              string
+	KISAccountNo              string
+	KISAccountProduct         string
+	KISMock                   bool
+	UpbitAccessKey            string
+	UpbitSecretKey            string
+	R2AccountID               string
+	R2AccessKeyID             string
+	R2SecretAccessKey         string
+	R2BucketName              string
+	CFAPIToken                string
 }
 
 func ConfigFromEnv() Config {
 	return Config{
-		Port:               envOrDefault("PORT", "8080"),
-		OpenClawBaseURL:    envOrDefault("OPENCLAW_BASE_URL", "http://localhost:18789"),
-		OpenClawToken:      os.Getenv("OPENCLAW_TOKEN"),
-		NaverClientID:      os.Getenv("NAVER_CLIENT_ID"),
-		NaverClientSecret:  os.Getenv("NAVER_CLIENT_SECRET"),
-		NaverRedirectURL:   envOrDefault("NAVER_REDIRECT_URL", "https://agent.choigonyok.com/auth/naver/callback"),
-		SessionSecret:      envOrDefault("SESSION_SECRET", "dev-session-secret-change-me"),
-		NaverAllowedIDs:    splitCSV(os.Getenv("NAVER_ALLOWED_IDS")),
-		GoogleClientID:     os.Getenv("GOOGLE_CLIENT_ID"),
-		GoogleClientSecret: os.Getenv("GOOGLE_CLIENT_SECRET"),
-		GoogleRefreshToken: os.Getenv("GOOGLE_REFRESH_TOKEN"),
-		FrontendURL:        os.Getenv("FRONTEND_URL"),
-		CORSAllowedOrigins: splitCSV(envOrDefault("CORS_ALLOWED_ORIGINS", "https://agent.choigonyok.com,http://localhost:5173,http://localhost:3000")),
-		Dev:                envBool("DEV"),
-		KISAppKey:          os.Getenv("KIS_APP_KEY"),
-		KISAppSecret:       os.Getenv("KIS_APP_SECRET"),
-		KISAccountNo:       os.Getenv("KIS_ACCOUNT_NO"),
-		KISAccountProduct:  envOrDefault("KIS_ACCOUNT_PRODUCT", "01"),
-		KISMock:            envBool("KIS_MOCK"),
-		UpbitAccessKey:     os.Getenv("UPBIT_ACCESS_KEY"),
-		UpbitSecretKey:     os.Getenv("UPBIT_SECRET_KEY"),
-		R2AccountID:        os.Getenv("R2_ACCOUNT_ID"),
-		R2AccessKeyID:      os.Getenv("R2_ACCESS_KEY_ID"),
-		R2SecretAccessKey:  os.Getenv("R2_SECRET_ACCESS_KEY"),
-		R2BucketName:       envOrDefault("R2_BUCKET_NAME", "openclaw"),
-		CFAPIToken:         os.Getenv("CF_API_TOKEN"),
+		Port:                      envOrDefault("PORT", "8080"),
+		OpenClawBaseURL:           envOrDefault("OPENCLAW_BASE_URL", "http://localhost:18789"),
+		OpenClawToken:             os.Getenv("OPENCLAW_TOKEN"),
+		NaverClientID:             os.Getenv("NAVER_CLIENT_ID"),
+		NaverClientSecret:         os.Getenv("NAVER_CLIENT_SECRET"),
+		NaverRedirectURL:          envOrDefault("NAVER_REDIRECT_URL", "https://agent.choigonyok.com/auth/naver/callback"),
+		SessionSecret:             envOrDefault("SESSION_SECRET", "dev-session-secret-change-me"),
+		NaverAllowedIDs:           splitCSV(os.Getenv("NAVER_ALLOWED_IDS")),
+		GoogleClientID:            os.Getenv("GOOGLE_CLIENT_ID"),
+		GoogleClientSecret:        os.Getenv("GOOGLE_CLIENT_SECRET"),
+		GoogleRefreshToken:        os.Getenv("GOOGLE_REFRESH_TOKEN"),
+		GoogleAnalyticsPropertyID: envOrDefault("GOOGLE_ANALYTICS_PROPERTY_ID", envOrDefault("GA_PROPERTY_ID", "535464309")),
+		FrontendURL:               os.Getenv("FRONTEND_URL"),
+		CORSAllowedOrigins:        splitCSV(envOrDefault("CORS_ALLOWED_ORIGINS", "https://agent.choigonyok.com,http://localhost:5173,http://localhost:3000")),
+		Dev:                       envBool("DEV"),
+		KISAppKey:                 os.Getenv("KIS_APP_KEY"),
+		KISAppSecret:              os.Getenv("KIS_APP_SECRET"),
+		KISAccountNo:              os.Getenv("KIS_ACCOUNT_NO"),
+		KISAccountProduct:         envOrDefault("KIS_ACCOUNT_PRODUCT", "01"),
+		KISMock:                   envBool("KIS_MOCK"),
+		UpbitAccessKey:            os.Getenv("UPBIT_ACCESS_KEY"),
+		UpbitSecretKey:            os.Getenv("UPBIT_SECRET_KEY"),
+		R2AccountID:               os.Getenv("R2_ACCOUNT_ID"),
+		R2AccessKeyID:             os.Getenv("R2_ACCESS_KEY_ID"),
+		R2SecretAccessKey:         os.Getenv("R2_SECRET_ACCESS_KEY"),
+		R2BucketName:              envOrDefault("R2_BUCKET_NAME", "openclaw"),
+		CFAPIToken:                os.Getenv("CF_API_TOKEN"),
 	}
 }
 

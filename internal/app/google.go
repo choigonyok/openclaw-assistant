@@ -15,16 +15,18 @@ import (
 )
 
 type GoogleConfig struct {
-	ClientID     string
-	ClientSecret string
-	RefreshToken string
+	ClientID            string
+	ClientSecret        string
+	RefreshToken        string
+	AnalyticsPropertyID string
 }
 
 type GoogleService struct {
-	clientID     string
-	clientSecret string
-	refreshToken string
-	httpClient   *http.Client
+	clientID            string
+	clientSecret        string
+	refreshToken        string
+	analyticsPropertyID string
+	httpClient          *http.Client
 
 	mu          sync.Mutex
 	accessToken string
@@ -33,9 +35,10 @@ type GoogleService struct {
 
 func NewGoogleService(cfg GoogleConfig) *GoogleService {
 	return &GoogleService{
-		clientID:     cfg.ClientID,
-		clientSecret: cfg.ClientSecret,
-		refreshToken: cfg.RefreshToken,
+		clientID:            cfg.ClientID,
+		clientSecret:        cfg.ClientSecret,
+		refreshToken:        cfg.RefreshToken,
+		analyticsPropertyID: strings.TrimSpace(cfg.AnalyticsPropertyID),
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -44,6 +47,19 @@ func NewGoogleService(cfg GoogleConfig) *GoogleService {
 
 func (g *GoogleService) Enabled() bool {
 	return g.clientID != "" && g.clientSecret != "" && g.refreshToken != ""
+}
+
+func (g *GoogleService) AnalyticsPropertyID() string {
+	return g.analyticsPropertyID
+}
+
+func (g *GoogleService) ConfigStatus() map[string]bool {
+	return map[string]bool{
+		"client_id":             g.clientID != "",
+		"client_secret":         g.clientSecret != "",
+		"refresh_token":         g.refreshToken != "",
+		"analytics_property_id": g.analyticsPropertyID != "",
+	}
 }
 
 func (g *GoogleService) SearchConsoleSubmitSitemap(ctx context.Context, siteURL, sitemapURL string) (json.RawMessage, error) {

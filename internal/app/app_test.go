@@ -211,9 +211,9 @@ func TestAddGoogleDate(t *testing.T) {
 
 func TestValidThinkVotePath(t *testing.T) {
 	valid := []string{
-		"ethics/trolley-problem",
-		"love/question_01",
-		"money/choice-2",
+		"philosophy/ethics/trolley-problem",
+		"relationship/love/question_01",
+		"finance/money/choice-2",
 	}
 	for _, path := range valid {
 		if !validThinkVotePath(path) {
@@ -228,7 +228,8 @@ func TestValidThinkVotePath(t *testing.T) {
 		"/trolley-problem",
 		"ethics/../secrets",
 		"ethics/trolley.problem",
-		"ethics/trolley-problem/extra",
+		"ethics/trolley-problem",
+		"philosophy/ethics/trolley-problem/extra",
 	}
 	for _, path := range invalid {
 		if validThinkVotePath(path) {
@@ -241,7 +242,7 @@ func TestThinkVotePostCreatesMissingVoteObject(t *testing.T) {
 	store := &fakeThinkStore{objects: map[string][]byte{}}
 	handler := handleThinkVotes(store)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/think/votes/ethics/trolley-problem", strings.NewReader(`{"option":"b"}`))
+	req := httptest.NewRequest(http.MethodPost, "/api/think/votes/philosophy/ethics/trolley-problem", strings.NewReader(`{"option":"b"}`))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 
@@ -251,7 +252,7 @@ func TestThinkVotePostCreatesMissingVoteObject(t *testing.T) {
 		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
 	}
 
-	key := "think/votes/ethics/trolley-problem.json"
+	key := "think/votes/philosophy/ethics/trolley-problem.json"
 	raw, ok := store.objects[key]
 	if !ok {
 		t.Fatalf("vote object %q was not created", key)

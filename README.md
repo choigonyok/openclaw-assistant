@@ -103,6 +103,7 @@ SESSION_SECRET=change-this-long-random-string
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 GOOGLE_REFRESH_TOKEN=
+GOOGLE_ANALYTICS_PROPERTY_ID=535464309
 
 KIS_APP_KEY=
 KIS_APP_SECRET=
@@ -138,6 +139,7 @@ Values already exported in your shell take precedence over `.env` values.
 | `GOOGLE_CLIENT_ID` | No | OAuth client ID used by Google API wrappers. |
 | `GOOGLE_CLIENT_SECRET` | No | OAuth client secret used by Google API wrappers. |
 | `GOOGLE_REFRESH_TOKEN` | No | OAuth refresh token with the required Google API scopes. |
+| `GOOGLE_ANALYTICS_PROPERTY_ID` | No | Default GA4 property ID used by the assistant UI and GA wrapper. `GA_PROPERTY_ID` is also accepted as a legacy alias. |
 | `KIS_APP_KEY` | No | 한국투자증권 KIS Developers app key for domestic stock balance lookup. |
 | `KIS_APP_SECRET` | No | 한국투자증권 KIS Developers app secret. |
 | `KIS_ACCOUNT_NO` | No | KIS account number prefix used for balance lookup. |

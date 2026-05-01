@@ -28,7 +28,9 @@ func handleGoogleStatus(google *GoogleService, auth *AuthService) http.HandlerFu
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{
-			"enabled": google.Enabled(),
+			"enabled":               google.Enabled(),
+			"configured":            google.ConfigStatus(),
+			"analytics_property_id": google.AnalyticsPropertyID(),
 			"endpoints": []string{
 				"POST /api/google/search-console/sitemap",
 				"GET /api/google/search-console/sites",
@@ -196,6 +198,9 @@ func handleGoogleAnalyticsRunReport(google *GoogleService, auth *AuthService) ht
 		}
 		if !decodeJSONBody(w, r, &req) {
 			return
+		}
+		if req.PropertyID == "" || len(req.Query) == 0 {
+			req.PropertyID = google.AnalyticsPropertyID()
 		}
 		if req.PropertyID == "" || len(req.Query) == 0 {
 			writeAPIError(w, http.StatusBadRequest, "property_id and query are required")
