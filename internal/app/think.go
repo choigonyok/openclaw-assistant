@@ -5,8 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -29,6 +29,7 @@ func NewR2Client(accountID, accessKeyID, secretAccessKey, bucket string) (*R2Cli
 			credentials.NewStaticCredentialsProvider(accessKeyID, secretAccessKey, ""),
 		),
 		awsconfig.WithRegion("auto"),
+		awsconfig.WithRequestChecksumCalculation(aws.RequestChecksumCalculationWhenRequired),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("r2 config: %w", err)
@@ -36,6 +37,7 @@ func NewR2Client(accountID, accessKeyID, secretAccessKey, bucket string) (*R2Cli
 
 	client := s3.NewFromConfig(cfg, func(o *s3.Options) {
 		o.BaseEndpoint = aws.String(endpoint)
+		o.UsePathStyle = true
 	})
 
 	return &R2Client{s3: client, bucket: bucket}, nil
@@ -65,7 +67,7 @@ func (r *R2Client) PutJSON(ctx context.Context, key string, v any) error {
 	_, err = r.s3.PutObject(ctx, &s3.PutObjectInput{
 		Bucket:      aws.String(r.bucket),
 		Key:         aws.String(key),
-		Body:        io.NopCloser(bytes.NewReader(data)),
+		Body:        bytes.NewReader(data),
 		ContentType: aws.String("application/json"),
 	})
 	if err != nil {
@@ -178,12 +180,22 @@ type votes struct {
 	B int `json:"b"`
 }
 
+var thinkPathPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*/[a-zA-Z0-9][a-zA-Z0-9_-]*$`)
+
+func validThinkVotePath(path string) bool {
+	return thinkPathPattern.MatchString(path)
+}
+
 func handleThinkVotes(r2 *R2Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// /api/think/votes/{categoryId}/{dilemmaId}
 		path := strings.TrimPrefix(r.URL.Path, "/api/think/votes/")
 		if path == "" {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "dilemma path required"})
+			return
+		}
+		if !validThinkVotePath(path) {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid dilemma path"})
 			return
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)

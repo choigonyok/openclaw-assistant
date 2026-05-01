@@ -122,7 +122,7 @@ func TestNaverLoginUsesFrontendURLForRedirectURI(t *testing.T) {
 		RedirectURL:  "http://localhost:8080/auth/naver/callback",
 		SessionKey:   "test-secret",
 	})
-	handler := NewHandler(&fakeSender{}, auth, NewGoogleService(GoogleConfig{}), NewKISClient("", "", "", "", false), NewUpbitClient("", ""), nil, apiHandlerConfig{
+	handler := NewHandler(&fakeSender{}, auth, NewGoogleService(GoogleConfig{}), NewKISClient("", "", "", "", false), NewUpbitClient("", ""), nil, nil, apiHandlerConfig{
 		FrontendURL: "https://agent.choigonyok.com",
 	})
 
@@ -145,7 +145,7 @@ func TestGoogleStatusInDevMode(t *testing.T) {
 		ClientID:     "client",
 		ClientSecret: "secret",
 		RefreshToken: "refresh",
-	}), NewKISClient("", "", "", "", false), NewUpbitClient("", ""), nil, apiHandlerConfig{})
+	}), NewKISClient("", "", "", "", false), NewUpbitClient("", ""), nil, nil, apiHandlerConfig{})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/google/status", nil)
 	rec := httptest.NewRecorder()
@@ -208,6 +208,34 @@ func TestAddGoogleDate(t *testing.T) {
 	}
 }
 
+func TestValidThinkVotePath(t *testing.T) {
+	valid := []string{
+		"ethics/trolley-problem",
+		"love/question_01",
+		"money/choice-2",
+	}
+	for _, path := range valid {
+		if !validThinkVotePath(path) {
+			t.Fatalf("validThinkVotePath(%q) = false, want true", path)
+		}
+	}
+
+	invalid := []string{
+		"",
+		"ethics",
+		"ethics/",
+		"/trolley-problem",
+		"ethics/../secrets",
+		"ethics/trolley.problem",
+		"ethics/trolley-problem/extra",
+	}
+	for _, path := range invalid {
+		if validThinkVotePath(path) {
+			t.Fatalf("validThinkVotePath(%q) = true, want false", path)
+		}
+	}
+}
+
 type fakeSender struct {
 	reply   string
 	err     error
@@ -215,7 +243,7 @@ type fakeSender struct {
 }
 
 func newTestHandler(client commandSender, auth *AuthService) http.Handler {
-	return NewHandler(client, auth, NewGoogleService(GoogleConfig{}), NewKISClient("", "", "", "", false), NewUpbitClient("", ""), nil, apiHandlerConfig{})
+	return NewHandler(client, auth, NewGoogleService(GoogleConfig{}), NewKISClient("", "", "", "", false), NewUpbitClient("", ""), nil, nil, apiHandlerConfig{})
 }
 
 func (f *fakeSender) SendCommand(_ context.Context, command string) (string, error) {
