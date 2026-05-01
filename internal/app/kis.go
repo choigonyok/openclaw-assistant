@@ -117,9 +117,21 @@ type BalanceSummary struct {
 	PnlAmt     string `json:"pnl_amt"`
 }
 
+type KISDiagnostics struct {
+	DomesticTRID        string `json:"domestic_tr_id,omitempty"`
+	DomesticOutput2Rows int    `json:"domestic_output2_rows"`
+	ForeignTRID         string `json:"foreign_tr_id,omitempty"`
+	ForeignMsgCode      string `json:"foreign_msg_code,omitempty"`
+	ForeignMsg          string `json:"foreign_msg,omitempty"`
+	ForeignOutput2Rows  int    `json:"foreign_output2_rows"`
+	ForeignOutput3Rows  int    `json:"foreign_output3_rows"`
+	ForeignError        string `json:"foreign_error,omitempty"`
+}
+
 type BalanceResult struct {
-	Holdings []Holding      `json:"holdings"`
-	Summary  BalanceSummary `json:"summary"`
+	Holdings    []Holding      `json:"holdings"`
+	Summary     BalanceSummary `json:"summary"`
+	Diagnostics KISDiagnostics `json:"diagnostics"`
 }
 
 type kisForeignCashRow struct {
@@ -193,6 +205,9 @@ func (c *KISClient) GetBalance() (*BalanceResult, error) {
 	if err != nil {
 		return nil, err
 	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("잔고 조회 HTTP 오류 [%d]: %s", resp.StatusCode, compactBody(raw))
+	}
 
 	var res struct {
 		MsgCode string `json:"msg_cd"`
@@ -222,7 +237,13 @@ func (c *KISClient) GetBalance() (*BalanceResult, error) {
 		return nil, fmt.Errorf("API 오류 [%s]: %s", res.MsgCode, res.Msg1)
 	}
 
-	result := &BalanceResult{Holdings: []Holding{}}
+	result := &BalanceResult{
+		Holdings: []Holding{},
+		Diagnostics: KISDiagnostics{
+			DomesticTRID:        trID,
+			DomesticOutput2Rows: len(res.Output2),
+		},
+	}
 	for _, h := range res.Output1 {
 		if h.HldgQty == "0" || h.HldgQty == "" {
 			continue
@@ -249,17 +270,37 @@ func (c *KISClient) GetBalance() (*BalanceResult, error) {
 			PnlAmt:   o.EvluPflsSmtlAmt,
 		}
 	}
-	usdCash, usdCashKRW := c.getUSDCash(token)
-	result.Summary.CashUSD = usdCash
-	result.Summary.CashUSDKRW = usdCashKRW
+	foreign := c.getUSDCash(token)
+	result.Diagnostics.ForeignTRID = foreign.trID
+	result.Diagnostics.ForeignMsgCode = foreign.msgCode
+	result.Diagnostics.ForeignMsg = foreign.msg
+	result.Diagnostics.ForeignOutput2Rows = foreign.output2Rows
+	result.Diagnostics.ForeignOutput3Rows = foreign.output3Rows
+	if foreign.err != nil {
+		result.Diagnostics.ForeignError = foreign.err.Error()
+	}
+	result.Summary.CashUSD = foreign.cash
+	result.Summary.CashUSDKRW = foreign.krw
 	return result, nil
 }
 
-func (c *KISClient) getUSDCash(token string) (string, string) {
+type kisForeignCashResult struct {
+	cash        string
+	krw         string
+	trID        string
+	msgCode     string
+	msg         string
+	output2Rows int
+	output3Rows int
+	err         error
+}
+
+func (c *KISClient) getUSDCash(token string) kisForeignCashResult {
 	trID := "CTRP6504R"
 	if c.isMock {
 		trID = "VTRP6504R"
 	}
+	result := kisForeignCashResult{trID: trID}
 
 	params := url.Values{}
 	params.Set("CANO", c.accountNo)
@@ -271,7 +312,8 @@ func (c *KISClient) getUSDCash(token string) (string, string) {
 
 	req, err := http.NewRequest("GET", kisBaseURL+"/uapi/overseas-stock/v1/trading/inquire-present-balance?"+params.Encode(), nil)
 	if err != nil {
-		return "", ""
+		result.err = err
+		return result
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("appkey", c.appKey)
@@ -282,24 +324,44 @@ func (c *KISClient) getUSDCash(token string) (string, string) {
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return "", ""
+		result.err = fmt.Errorf("외화 예수금 조회 요청 실패: %w", err)
+		return result
 	}
 	defer resp.Body.Close()
 
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", ""
+		result.err = fmt.Errorf("외화 예수금 응답 읽기 실패: %w", err)
+		return result
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		result.err = fmt.Errorf("외화 예수금 HTTP 오류 [%d]: %s", resp.StatusCode, compactBody(raw))
+		return result
 	}
 
 	var res struct {
 		MsgCode string             `json:"msg_cd"`
+		Msg1    string             `json:"msg1"`
 		Output2 kisForeignCashRows `json:"output2"`
 		Output3 kisForeignCashRows `json:"output3"`
 	}
-	if err := json.Unmarshal(raw, &res); err != nil || (res.MsgCode != "" && res.MsgCode != "MCA00000") {
-		return "", ""
+	if err := json.Unmarshal(raw, &res); err != nil {
+		result.err = fmt.Errorf("외화 예수금 응답 파싱 실패: %w", err)
+		return result
 	}
-	return pickUSDCash(append(res.Output2, res.Output3...))
+	result.msgCode = res.MsgCode
+	result.msg = res.Msg1
+	result.output2Rows = len(res.Output2)
+	result.output3Rows = len(res.Output3)
+	if res.MsgCode != "" && res.MsgCode != "MCA00000" {
+		result.err = fmt.Errorf("외화 예수금 API 오류 [%s]: %s", res.MsgCode, res.Msg1)
+		return result
+	}
+	result.cash, result.krw = pickUSDCash(append(res.Output2, res.Output3...))
+	if result.cash == "" && result.output2Rows+result.output3Rows == 0 {
+		result.err = fmt.Errorf("외화 예수금 응답에 output2/output3 행이 없습니다")
+	}
+	return result
 }
 
 func pickUSDCash(rows []kisForeignCashRow) (string, string) {
@@ -346,4 +408,12 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func compactBody(body []byte) string {
+	text := strings.TrimSpace(string(body))
+	if len(text) > 500 {
+		return text[:500] + "..."
+	}
+	return text
 }
