@@ -61,6 +61,7 @@ type SiteInfo struct {
 	ParentZone     string `json:"parent_zone,omitempty"`
 	DNSType        string `json:"dns_type,omitempty"`
 	DNSContent     string `json:"dns_content,omitempty"`
+	DNSError       string `json:"dns_error,omitempty"`
 }
 
 func handleSitesAPI(cf *CloudflareClient, auth *AuthService) http.HandlerFunc {
@@ -91,21 +92,26 @@ func handleSitesAPI(cf *CloudflareClient, auth *AuthService) http.HandlerFunc {
 
 		// 1단계: 각 zone의 DNS 레코드를 병렬로 조회하여 서브도메인 목록 수집
 		type zoneWithSubs struct {
-			zone CFZone
-			subs []CFDNSRecord
+			zone     CFZone
+			subs     []CFDNSRecord
+			dnsError string
 		}
 		zwsCh := make(chan zoneWithSubs, len(zones))
 		for _, zone := range zones {
 			go func(z CFZone) {
-				records, _ := cf.ListDNSRecords(ctx, z.ID)
+				records, err := cf.ListDNSRecords(ctx, z.ID)
+				var dnsErr string
+				if err != nil {
+					dnsErr = err.Error()
+				}
 				var subs []CFDNSRecord
 				for _, rec := range records {
-					// 루트 도메인 자체 레코드 제외, proxied된 A/CNAME만 포함
-					if rec.Proxied && rec.Name != z.Name {
+					// 루트 도메인 자체(@) 레코드 제외, A/CNAME 서브도메인만 포함
+					if rec.Name != z.Name {
 						subs = append(subs, rec)
 					}
 				}
-				zwsCh <- zoneWithSubs{zone: z, subs: subs}
+				zwsCh <- zoneWithSubs{zone: z, subs: subs, dnsError: dnsErr}
 			}(zone)
 		}
 
@@ -120,11 +126,13 @@ func handleSitesAPI(cf *CloudflareClient, auth *AuthService) http.HandlerFunc {
 			isSubdomain bool
 			zone        CFZone
 			rec         CFDNSRecord // 서브도메인인 경우
+			dnsError    string      // zone DNS 조회 실패 메시지 (루트 도메인에만 사용)
 		}
 		var tasks []siteTask
 		for _, z := range zones {
-			tasks = append(tasks, siteTask{zone: z})
-			for _, rec := range zoneMap[z.ID].subs {
+			zws := zoneMap[z.ID]
+			tasks = append(tasks, siteTask{zone: z, dnsError: zws.dnsError})
+			for _, rec := range zws.subs {
 				tasks = append(tasks, siteTask{isSubdomain: true, zone: z, rec: rec})
 			}
 		}
@@ -144,6 +152,7 @@ func handleSitesAPI(cf *CloudflareClient, auth *AuthService) http.HandlerFunc {
 						Name:     t.zone.Name,
 						CFStatus: t.zone.Status,
 						Plan:     t.zone.Plan.Name,
+						DNSError: t.dnsError,
 					}
 					health := CheckSiteHealth(t.zone.Name)
 					s.Health = health.Status
