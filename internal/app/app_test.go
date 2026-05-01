@@ -122,7 +122,7 @@ func TestNaverLoginUsesFrontendURLForRedirectURI(t *testing.T) {
 		RedirectURL:  "http://localhost:8080/auth/naver/callback",
 		SessionKey:   "test-secret",
 	})
-	handler := NewHandler(&fakeSender{}, auth, NewGoogleService(GoogleConfig{}), NewKISClient("", "", "", "", false), NewUpbitClient("", ""), apiHandlerConfig{
+	handler := NewHandler(&fakeSender{}, auth, NewGoogleService(GoogleConfig{}), NewKISClient("", "", "", "", false), NewUpbitClient("", ""), nil, apiHandlerConfig{
 		FrontendURL: "https://agent.choigonyok.com",
 	})
 
@@ -145,7 +145,7 @@ func TestGoogleStatusInDevMode(t *testing.T) {
 		ClientID:     "client",
 		ClientSecret: "secret",
 		RefreshToken: "refresh",
-	}), NewKISClient("", "", "", "", false), NewUpbitClient("", ""), apiHandlerConfig{})
+	}), NewKISClient("", "", "", "", false), NewUpbitClient("", ""), nil, apiHandlerConfig{})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/google/status", nil)
 	rec := httptest.NewRecorder()
@@ -215,7 +215,7 @@ type fakeSender struct {
 }
 
 func newTestHandler(client commandSender, auth *AuthService) http.Handler {
-	return NewHandler(client, auth, NewGoogleService(GoogleConfig{}), NewKISClient("", "", "", "", false), NewUpbitClient("", ""), apiHandlerConfig{})
+	return NewHandler(client, auth, NewGoogleService(GoogleConfig{}), NewKISClient("", "", "", "", false), NewUpbitClient("", ""), nil, apiHandlerConfig{})
 }
 
 func (f *fakeSender) SendCommand(_ context.Context, command string) (string, error) {

@@ -40,9 +40,19 @@ func Run(ctx context.Context, args []string, out io.Writer) error {
 	})
 	kis := NewKISClient(cfg.KISAppKey, cfg.KISAppSecret, cfg.KISAccountNo, cfg.KISAccountProduct, cfg.KISMock)
 	upbit := NewUpbitClient(cfg.UpbitAccessKey, cfg.UpbitSecretKey)
+
+	var r2 *R2Client
+	if cfg.R2AccountID != "" {
+		var err error
+		r2, err = NewR2Client(cfg.R2AccountID, cfg.R2AccessKeyID, cfg.R2SecretAccessKey, cfg.R2BucketName)
+		if err != nil {
+			return fmt.Errorf("r2 client: %w", err)
+		}
+	}
+
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           NewHandler(NewOpenClawClient(cfg.OpenClawBaseURL, cfg.OpenClawToken), auth, google, kis, upbit, apiHandlerConfig{FrontendURL: cfg.FrontendURL, CORSOrigins: cfg.CORSAllowedOrigins}),
+		Handler:           NewHandler(NewOpenClawClient(cfg.OpenClawBaseURL, cfg.OpenClawToken), auth, google, kis, upbit, r2, apiHandlerConfig{FrontendURL: cfg.FrontendURL, CORSOrigins: cfg.CORSAllowedOrigins}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -127,6 +137,10 @@ type Config struct {
 	KISMock            bool
 	UpbitAccessKey     string
 	UpbitSecretKey     string
+	R2AccountID        string
+	R2AccessKeyID      string
+	R2SecretAccessKey  string
+	R2BucketName       string
 }
 
 func ConfigFromEnv() Config {
@@ -152,6 +166,10 @@ func ConfigFromEnv() Config {
 		KISMock:            envBool("KIS_MOCK"),
 		UpbitAccessKey:     os.Getenv("UPBIT_ACCESS_KEY"),
 		UpbitSecretKey:     os.Getenv("UPBIT_SECRET_KEY"),
+		R2AccountID:        os.Getenv("R2_ACCOUNT_ID"),
+		R2AccessKeyID:      os.Getenv("R2_ACCESS_KEY_ID"),
+		R2SecretAccessKey:  os.Getenv("R2_SECRET_ACCESS_KEY"),
+		R2BucketName:       envOrDefault("R2_BUCKET_NAME", "openclaw"),
 	}
 }
 

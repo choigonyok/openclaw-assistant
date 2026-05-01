@@ -17,7 +17,7 @@ type apiHandlerConfig struct {
 	CORSOrigins []string
 }
 
-func NewHandler(client commandSender, auth *AuthService, google *GoogleService, kis *KISClient, upbit *UpbitClient, cfg apiHandlerConfig) http.Handler {
+func NewHandler(client commandSender, auth *AuthService, google *GoogleService, kis *KISClient, upbit *UpbitClient, r2 *R2Client, cfg apiHandlerConfig) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", handleAPIHome(cfg.FrontendURL))
 	mux.HandleFunc("/api/session", handleSessionAPI(auth))
@@ -34,6 +34,7 @@ func NewHandler(client commandSender, auth *AuthService, google *GoogleService, 
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok\n"))
 	})
+	mux.Handle("/api/think/", NewThinkHandler(r2))
 	return withCORS(mux, cfg.CORSOrigins)
 }
 
