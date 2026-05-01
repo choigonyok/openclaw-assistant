@@ -57,6 +57,10 @@ type SiteInfo struct {
 	Uniques7d      int64  `json:"uniques_7d"`
 	Bandwidth7d    int64  `json:"bandwidth_7d"`
 	StatsError     string `json:"stats_error,omitempty"`
+	IsSubdomain    bool   `json:"is_subdomain,omitempty"`
+	ParentZone     string `json:"parent_zone,omitempty"`
+	DNSType        string `json:"dns_type,omitempty"`
+	DNSContent     string `json:"dns_content,omitempty"`
 }
 
 func handleSitesAPI(cf *CloudflareClient, auth *AuthService) http.HandlerFunc {
@@ -73,7 +77,7 @@ func handleSitesAPI(cf *CloudflareClient, auth *AuthService) http.HandlerFunc {
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
 		defer cancel()
 
 		zones, err := cf.ListZones(ctx)
@@ -85,44 +89,102 @@ func handleSitesAPI(cf *CloudflareClient, auth *AuthService) http.HandlerFunc {
 			return
 		}
 
+		// 1단계: 각 zone의 DNS 레코드를 병렬로 조회하여 서브도메인 목록 수집
+		type zoneWithSubs struct {
+			zone CFZone
+			subs []CFDNSRecord
+		}
+		zwsCh := make(chan zoneWithSubs, len(zones))
+		for _, zone := range zones {
+			go func(z CFZone) {
+				records, _ := cf.ListDNSRecords(ctx, z.ID)
+				var subs []CFDNSRecord
+				for _, rec := range records {
+					// 루트 도메인 자체 레코드 제외, proxied된 A/CNAME만 포함
+					if rec.Proxied && rec.Name != z.Name {
+						subs = append(subs, rec)
+					}
+				}
+				zwsCh <- zoneWithSubs{zone: z, subs: subs}
+			}(zone)
+		}
+
+		zoneMap := make(map[string]zoneWithSubs, len(zones))
+		for range zones {
+			zws := <-zwsCh
+			zoneMap[zws.zone.ID] = zws
+		}
+
+		// 2단계: 전체 작업 목록 구성 (zone + 서브도메인)
+		type siteTask struct {
+			isSubdomain bool
+			zone        CFZone
+			rec         CFDNSRecord // 서브도메인인 경우
+		}
+		var tasks []siteTask
+		for _, z := range zones {
+			tasks = append(tasks, siteTask{zone: z})
+			for _, rec := range zoneMap[z.ID].subs {
+				tasks = append(tasks, siteTask{isSubdomain: true, zone: z, rec: rec})
+			}
+		}
+
+		// 3단계: 모든 사이트에 대해 헬스체크 + 통계 병렬 조회
 		type indexed struct {
 			site SiteInfo
 			idx  int
 		}
-		ch := make(chan indexed, len(zones))
-		sites := make([]SiteInfo, len(zones))
+		ch := make(chan indexed, len(tasks))
+		for i, task := range tasks {
+			go func(idx int, t siteTask) {
+				var s SiteInfo
+				if !t.isSubdomain {
+					s = SiteInfo{
+						ID:       t.zone.ID,
+						Name:     t.zone.Name,
+						CFStatus: t.zone.Status,
+						Plan:     t.zone.Plan.Name,
+					}
+					health := CheckSiteHealth(t.zone.Name)
+					s.Health = health.Status
+					s.HTTPStatus = health.HTTPStatus
+					s.ResponseMs = health.ResponseMs
 
-		for i, zone := range zones {
-			go func(idx int, z CFZone) {
-				s := SiteInfo{
-					ID:       z.ID,
-					Name:     z.Name,
-					CFStatus: z.Status,
-					Plan:     z.Plan.Name,
-				}
-				health := CheckSiteHealth(z.Name)
-				s.Health = health.Status
-				s.HTTPStatus = health.HTTPStatus
-				s.ResponseMs = health.ResponseMs
-
-				stats, err := cf.GetZoneStats(ctx, z.ID)
-				if err != nil {
-					s.StatsError = err.Error()
-				} else if stats != nil {
-					s.RequestsToday = stats.RequestsToday
-					s.PageViewsToday = stats.PageViewsToday
-					s.UniquesToday = stats.UniquesToday
-					s.BandwidthToday = stats.BandwidthToday
-					s.Requests7d = stats.Requests7d
-					s.PageViews7d = stats.PageViews7d
-					s.Uniques7d = stats.Uniques7d
-					s.Bandwidth7d = stats.Bandwidth7d
+					stats, err := cf.GetZoneStats(ctx, t.zone.ID)
+					if err != nil {
+						s.StatsError = err.Error()
+					} else if stats != nil {
+						s.RequestsToday = stats.RequestsToday
+						s.PageViewsToday = stats.PageViewsToday
+						s.UniquesToday = stats.UniquesToday
+						s.BandwidthToday = stats.BandwidthToday
+						s.Requests7d = stats.Requests7d
+						s.PageViews7d = stats.PageViews7d
+						s.Uniques7d = stats.Uniques7d
+						s.Bandwidth7d = stats.Bandwidth7d
+					}
+				} else {
+					s = SiteInfo{
+						ID:          t.rec.ID,
+						Name:        t.rec.Name,
+						CFStatus:    t.zone.Status,
+						Plan:        t.zone.Plan.Name,
+						IsSubdomain: true,
+						ParentZone:  t.zone.Name,
+						DNSType:     t.rec.Type,
+						DNSContent:  t.rec.Content,
+					}
+					health := CheckSiteHealth(t.rec.Name)
+					s.Health = health.Status
+					s.HTTPStatus = health.HTTPStatus
+					s.ResponseMs = health.ResponseMs
 				}
 				ch <- indexed{site: s, idx: idx}
-			}(i, zone)
+			}(i, task)
 		}
 
-		for range zones {
+		sites := make([]SiteInfo, len(tasks))
+		for range tasks {
 			res := <-ch
 			sites[res.idx] = res.site
 		}

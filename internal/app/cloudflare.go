@@ -150,6 +150,44 @@ func (c *CloudflareClient) GetZoneStats(ctx context.Context, zoneID string) (*Zo
 	return stats, nil
 }
 
+type CFDNSRecord struct {
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Type    string `json:"type"`
+	Content string `json:"content"`
+	Proxied bool   `json:"proxied"`
+}
+
+func (c *CloudflareClient) ListDNSRecords(ctx context.Context, zoneID string) ([]CFDNSRecord, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
+		"https://api.cloudflare.com/client/v4/zones/"+zoneID+"/dns_records?type=A,CNAME&per_page=100", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+c.apiToken)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var out struct {
+		Success bool          `json:"success"`
+		Result  []CFDNSRecord `json:"result"`
+		Errors  []struct {
+			Message string `json:"message"`
+		} `json:"errors"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	if !out.Success && len(out.Errors) > 0 {
+		return nil, fmt.Errorf("cloudflare dns: %s", out.Errors[0].Message)
+	}
+	return out.Result, nil
+}
+
 type SiteHealth struct {
 	Status     string
 	HTTPStatus int
