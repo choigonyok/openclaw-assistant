@@ -14,6 +14,7 @@ import (
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/smithy-go/middleware"
 )
 
 type R2Client struct {
@@ -75,11 +76,20 @@ func (r *R2Client) PutJSON(ctx context.Context, key string, v any) error {
 		Key:         aws.String(key),
 		Body:        bytes.NewReader(data),
 		ContentType: aws.String("application/json"),
-	})
+	}, disableS3RequestChecksum)
 	if err != nil {
 		return fmt.Errorf("r2 put %s: %w", key, err)
 	}
 	return nil
+}
+
+func disableS3RequestChecksum(o *s3.Options) {
+	o.APIOptions = append(o.APIOptions, func(stack *middleware.Stack) error {
+		_, _ = stack.Initialize.Remove("AWSChecksum:SetupInputContext")
+		_, _ = stack.Finalize.Remove("AWSChecksum:ComputeInputPayloadChecksum")
+		_, _ = stack.Finalize.Remove("addInputChecksumTrailer")
+		return nil
+	})
 }
 
 // ── API handlers ──────────────────────────────────────────────
