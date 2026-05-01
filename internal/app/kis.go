@@ -25,6 +25,11 @@ type KISClient struct {
 	mu          sync.Mutex
 	accessToken string
 	tokenExpiry time.Time
+
+	foreignMu          sync.Mutex
+	foreignLastRequest time.Time
+	foreignCache       kisForeignCashResult
+	foreignCacheExpiry time.Time
 }
 
 func NewKISClient(appKey, appSecret, accountNo, accountProduct string, isMock bool) *KISClient {
@@ -277,17 +282,6 @@ func (c *KISClient) GetBalance() (*BalanceResult, error) {
 			PnlAmt:   o.EvluPflsSmtlAmt,
 		}
 	}
-	domesticCash := c.getKRWOrderableCash(token)
-	result.Diagnostics.DomesticCashTRID = domesticCash.trID
-	result.Diagnostics.DomesticCashMsgCode = domesticCash.msgCode
-	result.Diagnostics.DomesticCashMsg = domesticCash.msg
-	if domesticCash.err != nil {
-		result.Diagnostics.DomesticCashError = domesticCash.err.Error()
-	}
-	if domesticCash.cash != "" {
-		result.Summary.CashKRW = domesticCash.cash
-		result.Summary.CashAmt = domesticCash.cash
-	}
 	foreign := c.getUSDCash(token)
 	result.Diagnostics.ForeignTRID = foreign.trID
 	result.Diagnostics.ForeignMsgCode = foreign.msgCode
@@ -401,6 +395,17 @@ func (c *KISClient) getUSDCash(token string) kisForeignCashResult {
 	}
 	result := kisForeignCashResult{trID: trID}
 
+	c.foreignMu.Lock()
+	defer c.foreignMu.Unlock()
+
+	if time.Now().Before(c.foreignCacheExpiry) {
+		return c.foreignCache
+	}
+
+	if wait := time.Until(c.foreignLastRequest.Add(1200 * time.Millisecond)); wait > 0 {
+		time.Sleep(wait)
+	}
+
 	params := url.Values{}
 	params.Set("CANO", c.accountNo)
 	params.Set("ACNT_PRDT_CD", c.accountProduct)
@@ -409,31 +414,40 @@ func (c *KISClient) getUSDCash(token string) kisForeignCashResult {
 	params.Set("TR_MKET_CD", "00")
 	params.Set("INQR_DVSN_CD", "00")
 
-	req, err := http.NewRequest("GET", kisBaseURL+"/uapi/overseas-stock/v1/trading/inquire-present-balance?"+params.Encode(), nil)
-	if err != nil {
-		result.err = err
-		return result
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("appkey", c.appKey)
-	req.Header.Set("appsecret", c.appSecret)
-	req.Header.Set("tr_id", trID)
-	req.Header.Set("Content-Type", "application/json; charset=utf-8")
-	req.Header.Set("custtype", "P")
+	var raw []byte
+	for attempt := 0; attempt < 2; attempt++ {
+		req, err := http.NewRequest("GET", kisBaseURL+"/uapi/overseas-stock/v1/trading/inquire-present-balance?"+params.Encode(), nil)
+		if err != nil {
+			result.err = err
+			return result
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+		req.Header.Set("appkey", c.appKey)
+		req.Header.Set("appsecret", c.appSecret)
+		req.Header.Set("tr_id", trID)
+		req.Header.Set("Content-Type", "application/json; charset=utf-8")
+		req.Header.Set("custtype", "P")
 
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		result.err = fmt.Errorf("외화 예수금 조회 요청 실패: %w", err)
-		return result
-	}
-	defer resp.Body.Close()
+		c.foreignLastRequest = time.Now()
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			result.err = fmt.Errorf("외화 예수금 조회 요청 실패: %w", err)
+			return result
+		}
 
-	raw, err := io.ReadAll(resp.Body)
-	if err != nil {
-		result.err = fmt.Errorf("외화 예수금 응답 읽기 실패: %w", err)
-		return result
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		raw, err = io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			result.err = fmt.Errorf("외화 예수금 응답 읽기 실패: %w", err)
+			return result
+		}
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			break
+		}
+		if attempt == 0 && strings.Contains(string(raw), "EGW00201") {
+			time.Sleep(1200 * time.Millisecond)
+			continue
+		}
 		result.err = fmt.Errorf("외화 예수금 HTTP 오류 [%d]: %s", resp.StatusCode, compactBody(raw))
 		return result
 	}
@@ -460,6 +474,10 @@ func (c *KISClient) getUSDCash(token string) kisForeignCashResult {
 	result.cash, result.krw = pickUSDCash(append(res.Output2, res.Output3...))
 	if result.cash == "" && result.output2Rows+result.output3Rows == 0 {
 		result.err = fmt.Errorf("외화 예수금 응답에 output2/output3 행이 없습니다")
+	}
+	if result.err == nil {
+		c.foreignCache = result
+		c.foreignCacheExpiry = time.Now().Add(5 * time.Second)
 	}
 	return result
 }
