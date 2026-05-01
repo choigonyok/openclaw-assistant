@@ -178,7 +178,7 @@ func ConfigFromEnv() Config {
 		R2AccountID:               os.Getenv("R2_ACCOUNT_ID"),
 		R2AccessKeyID:             os.Getenv("R2_ACCESS_KEY_ID"),
 		R2SecretAccessKey:         os.Getenv("R2_SECRET_ACCESS_KEY"),
-		R2BucketName:              envOrDefault("R2_BUCKET_NAME", "openclaw"),
+		R2BucketName:              envOrDefault("R2_BUCKET_NAME", "think"),
 		CFAPIToken:                os.Getenv("CF_API_TOKEN"),
 	}
 }

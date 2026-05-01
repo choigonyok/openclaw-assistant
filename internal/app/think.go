@@ -130,6 +130,25 @@ func handleThinkCategories(store thinkJSONStore) http.HandlerFunc {
 	}
 }
 
+func resolveThinkCategoryTopic(ctx context.Context, store thinkJSONStore, categoryID string) string {
+	var categories []map[string]any
+	if err := store.GetJSON(ctx, "think/categories.json", &categories); err != nil {
+		return "philosophy"
+	}
+	for _, category := range categories {
+		id, _ := category["id"].(string)
+		if id != categoryID {
+			continue
+		}
+		topic, _ := category["topic"].(string)
+		if topic != "" {
+			return topic
+		}
+		return "philosophy"
+	}
+	return "philosophy"
+}
+
 func handleThinkDilemmas(store thinkJSONStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -137,14 +156,29 @@ func handleThinkDilemmas(store thinkJSONStore) http.HandlerFunc {
 			return
 		}
 		remainder := strings.TrimPrefix(r.URL.Path, "/api/think/dilemmas/")
-		parts := strings.SplitN(remainder, "/", 2)
-		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		if remainder == "" {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "topic and category id required"})
 			return
 		}
-		topicID, categoryID := parts[0], parts[1]
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		defer cancel()
+
+		parts := strings.Split(remainder, "/")
+		topicID, categoryID := "", ""
+		switch len(parts) {
+		case 1:
+			categoryID = parts[0]
+			topicID = resolveThinkCategoryTopic(ctx, store, categoryID)
+		case 2:
+			topicID, categoryID = parts[0], parts[1]
+		default:
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid dilemma path"})
+			return
+		}
+		if topicID == "" || categoryID == "" {
+			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "topic and category id required"})
+			return
+		}
 
 		var dilemmas []map[string]any
 		if err := store.GetJSON(ctx, "think/dilemmas/"+topicID+"/"+categoryID+".json", &dilemmas); err != nil {
@@ -170,13 +204,19 @@ func handleThinkDilemma(store thinkJSONStore) http.HandlerFunc {
 		defer cancel()
 
 		// dilemmaID 형식: "{topicId}/{categoryId}/{dilemmaId}"
-		// 예: philosophy/ethics/trolley-problem
-		parts := strings.SplitN(dilemmaID, "/", 3)
-		if len(parts) != 3 {
+		// 구 형식 "{categoryId}/{dilemmaId}"도 기존 링크 호환을 위해 허용한다.
+		parts := strings.Split(dilemmaID, "/")
+		if len(parts) != 2 && len(parts) != 3 {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid dilemma id format, use {topicId}/{categoryId}/{dilemmaId}"})
 			return
 		}
-		topicID, categoryID, itemID := parts[0], parts[1], parts[2]
+		topicID, categoryID, itemID := "", "", ""
+		if len(parts) == 2 {
+			categoryID, itemID = parts[0], parts[1]
+			topicID = resolveThinkCategoryTopic(ctx, store, categoryID)
+		} else {
+			topicID, categoryID, itemID = parts[0], parts[1], parts[2]
+		}
 
 		var dilemmas []map[string]any
 		if err := store.GetJSON(ctx, "think/dilemmas/"+topicID+"/"+categoryID+".json", &dilemmas); err != nil {
@@ -202,7 +242,7 @@ type votes struct {
 	B int `json:"b"`
 }
 
-var thinkPathPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*/[a-zA-Z0-9][a-zA-Z0-9_-]*/[a-zA-Z0-9][a-zA-Z0-9_-]*$`)
+var thinkPathPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]*/[a-zA-Z0-9][a-zA-Z0-9_-]*(/[a-zA-Z0-9][a-zA-Z0-9_-]*)?$`)
 
 func validThinkVotePath(path string) bool {
 	return thinkPathPattern.MatchString(path)
@@ -210,7 +250,6 @@ func validThinkVotePath(path string) bool {
 
 func handleThinkVotes(store thinkJSONStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// /api/think/votes/{categoryId}/{dilemmaId}
 		path := strings.TrimPrefix(r.URL.Path, "/api/think/votes/")
 		if path == "" {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "dilemma path required"})
@@ -223,6 +262,10 @@ func handleThinkVotes(store thinkJSONStore) http.HandlerFunc {
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		defer cancel()
 
+		if strings.Count(path, "/") == 1 {
+			parts := strings.SplitN(path, "/", 2)
+			path = resolveThinkCategoryTopic(ctx, store, parts[0]) + "/" + path
+		}
 		key := "think/votes/" + path + ".json"
 
 		switch r.Method {

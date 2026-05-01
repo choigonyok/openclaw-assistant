@@ -212,6 +212,7 @@ func TestAddGoogleDate(t *testing.T) {
 func TestValidThinkVotePath(t *testing.T) {
 	valid := []string{
 		"philosophy/ethics/trolley-problem",
+		"ethics/trolley-problem",
 		"relationship/love/question_01",
 		"finance/money/choice-2",
 	}
@@ -228,7 +229,6 @@ func TestValidThinkVotePath(t *testing.T) {
 		"/trolley-problem",
 		"ethics/../secrets",
 		"ethics/trolley.problem",
-		"ethics/trolley-problem",
 		"philosophy/ethics/trolley-problem/extra",
 	}
 	for _, path := range invalid {
@@ -264,6 +264,51 @@ func TestThinkVotePostCreatesMissingVoteObject(t *testing.T) {
 	}
 	if got.A != 0 || got.B != 1 {
 		t.Fatalf("votes = %+v, want {A:0 B:1}", got)
+	}
+}
+
+func TestThinkDilemmasLegacyPathResolvesTopic(t *testing.T) {
+	store := &fakeThinkStore{objects: map[string][]byte{
+		"think/categories.json":                          []byte(`[{"id":"first-move","topic":"love"}]`),
+		"think/dilemmas/love/first-move.json":            []byte(`[{"id":"confess-first"}]`),
+		"think/votes/love/first-move/confess-first.json": []byte(`{"a":2,"b":1}`),
+	}}
+	handler := newThinkHandler(store)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/think/dilemmas/first-move", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "confess-first") {
+		t.Fatalf("body = %s, want dilemma payload", rec.Body.String())
+	}
+}
+
+func TestThinkVoteLegacyPathResolvesTopic(t *testing.T) {
+	store := &fakeThinkStore{objects: map[string][]byte{
+		"think/categories.json":                          []byte(`[{"id":"first-move","topic":"love"}]`),
+		"think/votes/love/first-move/confess-first.json": []byte(`{"a":2,"b":1}`),
+	}}
+	handler := handleThinkVotes(store)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/think/votes/first-move/confess-first", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var got votes
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("response is invalid json: %v", err)
+	}
+	if got.A != 2 || got.B != 1 {
+		t.Fatalf("votes = %+v, want {A:2 B:1}", got)
 	}
 }
 
