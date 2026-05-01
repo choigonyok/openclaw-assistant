@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -17,7 +18,7 @@ type apiHandlerConfig struct {
 	CORSOrigins []string
 }
 
-func NewHandler(client commandSender, auth *AuthService, google *GoogleService, kis *KISClient, upbit *UpbitClient, r2 *R2Client, cfg apiHandlerConfig) http.Handler {
+func NewHandler(client commandSender, auth *AuthService, google *GoogleService, kis *KISClient, upbit *UpbitClient, r2 *R2Client, cf *CloudflareClient, cfg apiHandlerConfig) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", handleAPIHome(cfg.FrontendURL))
 	mux.HandleFunc("/api/session", handleSessionAPI(auth))
@@ -30,12 +31,104 @@ func NewHandler(client commandSender, auth *AuthService, google *GoogleService, 
 	mux.HandleFunc("/api/health", handleHealthAPI(auth))
 	mux.HandleFunc("/api/assets", handleAssetsAPI(kis, auth))
 	mux.HandleFunc("/api/crypto", handleCryptoAPI(upbit, auth))
+	mux.HandleFunc("/api/sites", handleSitesAPI(cf, auth))
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok\n"))
 	})
 	mux.Handle("/api/think/", NewThinkHandler(r2))
 	return withCORS(mux, cfg.CORSOrigins)
+}
+
+type SiteInfo struct {
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	CFStatus       string `json:"cf_status"`
+	Plan           string `json:"plan"`
+	Health         string `json:"health"`
+	HTTPStatus     int    `json:"http_status"`
+	ResponseMs     int64  `json:"response_ms"`
+	RequestsToday  int64  `json:"requests_today"`
+	PageViewsToday int64  `json:"page_views_today"`
+	UniquesToday   int64  `json:"uniques_today"`
+	BandwidthToday int64  `json:"bandwidth_today"`
+	Requests7d     int64  `json:"requests_7d"`
+	PageViews7d    int64  `json:"page_views_7d"`
+	Uniques7d      int64  `json:"uniques_7d"`
+	Bandwidth7d    int64  `json:"bandwidth_7d"`
+	StatsError     string `json:"stats_error,omitempty"`
+}
+
+func handleSitesAPI(cf *CloudflareClient, auth *AuthService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := auth.CurrentUserOrDev(r); !ok {
+			writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "unauthorized"})
+			return
+		}
+		if cf == nil || !cf.Enabled() {
+			writeJSON(w, http.StatusOK, map[string]interface{}{
+				"error": "Cloudflare API가 설정되지 않았습니다. .env에 CF_API_TOKEN을 설정하세요.",
+				"sites": []SiteInfo{},
+			})
+			return
+		}
+
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+
+		zones, err := cf.ListZones(ctx)
+		if err != nil {
+			writeJSON(w, http.StatusOK, map[string]interface{}{
+				"error": fmt.Sprintf("Cloudflare 영역 조회 실패: %s", err.Error()),
+				"sites": []SiteInfo{},
+			})
+			return
+		}
+
+		type indexed struct {
+			site SiteInfo
+			idx  int
+		}
+		ch := make(chan indexed, len(zones))
+		sites := make([]SiteInfo, len(zones))
+
+		for i, zone := range zones {
+			go func(idx int, z CFZone) {
+				s := SiteInfo{
+					ID:       z.ID,
+					Name:     z.Name,
+					CFStatus: z.Status,
+					Plan:     z.Plan.Name,
+				}
+				health := CheckSiteHealth(z.Name)
+				s.Health = health.Status
+				s.HTTPStatus = health.HTTPStatus
+				s.ResponseMs = health.ResponseMs
+
+				stats, err := cf.GetZoneStats(ctx, z.ID)
+				if err != nil {
+					s.StatsError = err.Error()
+				} else if stats != nil {
+					s.RequestsToday = stats.RequestsToday
+					s.PageViewsToday = stats.PageViewsToday
+					s.UniquesToday = stats.UniquesToday
+					s.BandwidthToday = stats.BandwidthToday
+					s.Requests7d = stats.Requests7d
+					s.PageViews7d = stats.PageViews7d
+					s.Uniques7d = stats.Uniques7d
+					s.Bandwidth7d = stats.Bandwidth7d
+				}
+				ch <- indexed{site: s, idx: idx}
+			}(i, zone)
+		}
+
+		for range zones {
+			res := <-ch
+			sites[res.idx] = res.site
+		}
+
+		writeJSON(w, http.StatusOK, map[string]interface{}{"sites": sites})
+	}
 }
 
 func handleAPIHome(frontendURL string) http.HandlerFunc {

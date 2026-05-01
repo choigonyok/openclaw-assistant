@@ -50,9 +50,14 @@ func Run(ctx context.Context, args []string, out io.Writer) error {
 		}
 	}
 
+	var cf *CloudflareClient
+	if cfg.CFAPIToken != "" {
+		cf = NewCloudflareClient(cfg.CFAPIToken)
+	}
+
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           NewHandler(NewOpenClawClient(cfg.OpenClawBaseURL, cfg.OpenClawToken), auth, google, kis, upbit, r2, apiHandlerConfig{FrontendURL: cfg.FrontendURL, CORSOrigins: cfg.CORSAllowedOrigins}),
+		Handler:           NewHandler(NewOpenClawClient(cfg.OpenClawBaseURL, cfg.OpenClawToken), auth, google, kis, upbit, r2, cf, apiHandlerConfig{FrontendURL: cfg.FrontendURL, CORSOrigins: cfg.CORSAllowedOrigins}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -141,6 +146,7 @@ type Config struct {
 	R2AccessKeyID      string
 	R2SecretAccessKey  string
 	R2BucketName       string
+	CFAPIToken         string
 }
 
 func ConfigFromEnv() Config {
@@ -170,6 +176,7 @@ func ConfigFromEnv() Config {
 		R2AccessKeyID:      os.Getenv("R2_ACCESS_KEY_ID"),
 		R2SecretAccessKey:  os.Getenv("R2_SECRET_ACCESS_KEY"),
 		R2BucketName:       envOrDefault("R2_BUCKET_NAME", "openclaw"),
+		CFAPIToken:         os.Getenv("CF_API_TOKEN"),
 	}
 }
 
