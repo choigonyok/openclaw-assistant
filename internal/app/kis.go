@@ -216,6 +216,7 @@ func (c *KISClient) GetBalance() (*BalanceResult, error) {
 	}
 
 	var res struct {
+		RtCode  string `json:"rt_cd"`
 		MsgCode string `json:"msg_cd"`
 		Msg1    string `json:"msg1"`
 		Output1 []struct {
@@ -239,7 +240,7 @@ func (c *KISClient) GetBalance() (*BalanceResult, error) {
 	if err := json.Unmarshal(raw, &res); err != nil {
 		return nil, fmt.Errorf("응답 파싱 실패: %w", err)
 	}
-	if res.MsgCode != "" && res.MsgCode != "MCA00000" {
+	if res.RtCode != "" && res.RtCode != "0" {
 		return nil, fmt.Errorf("API 오류 [%s]: %s", res.MsgCode, res.Msg1)
 	}
 
@@ -366,6 +367,7 @@ func (c *KISClient) getKRWOrderableCash(token string) kisKRWCashResult {
 	}
 
 	var res struct {
+		RtCode  string `json:"rt_cd"`
 		MsgCode string `json:"msg_cd"`
 		Msg1    string `json:"msg1"`
 		Output  struct {
@@ -381,7 +383,7 @@ func (c *KISClient) getKRWOrderableCash(token string) kisKRWCashResult {
 	}
 	result.msgCode = res.MsgCode
 	result.msg = res.Msg1
-	if res.MsgCode != "" && res.MsgCode != "MCA00000" {
+	if res.RtCode != "" && res.RtCode != "0" {
 		result.err = fmt.Errorf("원화 매수가능금액 API 오류 [%s]: %s", res.MsgCode, res.Msg1)
 		return result
 	}
@@ -437,6 +439,7 @@ func (c *KISClient) getUSDCash(token string) kisForeignCashResult {
 	}
 
 	var res struct {
+		RtCode  string             `json:"rt_cd"`
 		MsgCode string             `json:"msg_cd"`
 		Msg1    string             `json:"msg1"`
 		Output2 kisForeignCashRows `json:"output2"`
@@ -450,7 +453,7 @@ func (c *KISClient) getUSDCash(token string) kisForeignCashResult {
 	result.msg = res.Msg1
 	result.output2Rows = len(res.Output2)
 	result.output3Rows = len(res.Output3)
-	if res.MsgCode != "" && res.MsgCode != "MCA00000" {
+	if res.RtCode != "" && res.RtCode != "0" {
 		result.err = fmt.Errorf("외화 예수금 API 오류 [%s]: %s", res.MsgCode, res.Msg1)
 		return result
 	}
