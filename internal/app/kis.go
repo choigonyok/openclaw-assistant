@@ -120,6 +120,10 @@ type BalanceSummary struct {
 type KISDiagnostics struct {
 	DomesticTRID        string `json:"domestic_tr_id,omitempty"`
 	DomesticOutput2Rows int    `json:"domestic_output2_rows"`
+	DomesticCashTRID    string `json:"domestic_cash_tr_id,omitempty"`
+	DomesticCashMsgCode string `json:"domestic_cash_msg_code,omitempty"`
+	DomesticCashMsg     string `json:"domestic_cash_msg,omitempty"`
+	DomesticCashError   string `json:"domestic_cash_error,omitempty"`
 	ForeignTRID         string `json:"foreign_tr_id,omitempty"`
 	ForeignMsgCode      string `json:"foreign_msg_code,omitempty"`
 	ForeignMsg          string `json:"foreign_msg,omitempty"`
@@ -139,6 +143,8 @@ type kisForeignCashRow struct {
 	ForeignCash    string `json:"frcr_dncl_amt_2"`
 	ForeignUsable  string `json:"frcr_use_psbl_amt"`
 	ForeignBalance string `json:"tot_frcr_cblc_smtl"`
+	DepositAmount  string `json:"dncl_amt"`
+	TotalDeposit   string `json:"tot_dncl_amt"`
 	ForeignKRW     string `json:"frcr_evlu_amt2"`
 	BaseRate       string `json:"bass_exrt"`
 }
@@ -270,6 +276,17 @@ func (c *KISClient) GetBalance() (*BalanceResult, error) {
 			PnlAmt:   o.EvluPflsSmtlAmt,
 		}
 	}
+	domesticCash := c.getKRWOrderableCash(token)
+	result.Diagnostics.DomesticCashTRID = domesticCash.trID
+	result.Diagnostics.DomesticCashMsgCode = domesticCash.msgCode
+	result.Diagnostics.DomesticCashMsg = domesticCash.msg
+	if domesticCash.err != nil {
+		result.Diagnostics.DomesticCashError = domesticCash.err.Error()
+	}
+	if domesticCash.cash != "" {
+		result.Summary.CashKRW = domesticCash.cash
+		result.Summary.CashAmt = domesticCash.cash
+	}
 	foreign := c.getUSDCash(token)
 	result.Diagnostics.ForeignTRID = foreign.trID
 	result.Diagnostics.ForeignMsgCode = foreign.msgCode
@@ -295,6 +312,86 @@ type kisForeignCashResult struct {
 	err         error
 }
 
+type kisKRWCashResult struct {
+	cash    string
+	trID    string
+	msgCode string
+	msg     string
+	err     error
+}
+
+func (c *KISClient) getKRWOrderableCash(token string) kisKRWCashResult {
+	trID := "TTTC8908R"
+	if c.isMock {
+		trID = "VTTC8908R"
+	}
+	result := kisKRWCashResult{trID: trID}
+
+	params := url.Values{}
+	params.Set("CANO", c.accountNo)
+	params.Set("ACNT_PRDT_CD", c.accountProduct)
+	params.Set("PDNO", "005930")
+	params.Set("ORD_UNPR", "1")
+	params.Set("ORD_DVSN", "01")
+	params.Set("CMA_EVLU_AMT_ICLD_YN", "Y")
+	params.Set("OVRS_ICLD_YN", "N")
+
+	req, err := http.NewRequest("GET", kisBaseURL+"/uapi/domestic-stock/v1/trading/inquire-psbl-order?"+params.Encode(), nil)
+	if err != nil {
+		result.err = err
+		return result
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("appkey", c.appKey)
+	req.Header.Set("appsecret", c.appSecret)
+	req.Header.Set("tr_id", trID)
+	req.Header.Set("Content-Type", "application/json; charset=utf-8")
+	req.Header.Set("custtype", "P")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		result.err = fmt.Errorf("원화 매수가능금액 조회 요청 실패: %w", err)
+		return result
+	}
+	defer resp.Body.Close()
+
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		result.err = fmt.Errorf("원화 매수가능금액 응답 읽기 실패: %w", err)
+		return result
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		result.err = fmt.Errorf("원화 매수가능금액 HTTP 오류 [%d]: %s", resp.StatusCode, compactBody(raw))
+		return result
+	}
+
+	var res struct {
+		MsgCode string `json:"msg_cd"`
+		Msg1    string `json:"msg1"`
+		Output  struct {
+			OrderableCash string `json:"ord_psbl_cash"`
+			NoCreditBuy   string `json:"nrcvb_buy_amt"`
+			MaxBuy        string `json:"max_buy_amt"`
+			CMAValue      string `json:"cma_evlu_amt"`
+		} `json:"output"`
+	}
+	if err := json.Unmarshal(raw, &res); err != nil {
+		result.err = fmt.Errorf("원화 매수가능금액 응답 파싱 실패: %w", err)
+		return result
+	}
+	result.msgCode = res.MsgCode
+	result.msg = res.Msg1
+	if res.MsgCode != "" && res.MsgCode != "MCA00000" {
+		result.err = fmt.Errorf("원화 매수가능금액 API 오류 [%s]: %s", res.MsgCode, res.Msg1)
+		return result
+	}
+	result.cash = firstNonZero(res.Output.OrderableCash, res.Output.NoCreditBuy, res.Output.MaxBuy, res.Output.CMAValue)
+	if result.cash == "" {
+		result.err = fmt.Errorf("원화 매수가능금액 응답에 사용할 현금 필드가 없습니다")
+	}
+	return result
+}
+
 func (c *KISClient) getUSDCash(token string) kisForeignCashResult {
 	trID := "CTRP6504R"
 	if c.isMock {
@@ -306,7 +403,7 @@ func (c *KISClient) getUSDCash(token string) kisForeignCashResult {
 	params.Set("CANO", c.accountNo)
 	params.Set("ACNT_PRDT_CD", c.accountProduct)
 	params.Set("WCRC_FRCR_DVSN_CD", "02")
-	params.Set("NATN_CD", "840")
+	params.Set("NATN_CD", "000")
 	params.Set("TR_MKET_CD", "00")
 	params.Set("INQR_DVSN_CD", "00")
 
@@ -380,7 +477,7 @@ func pickUSDCash(rows []kisForeignCashRow) (string, string) {
 }
 
 func (r kisForeignCashRow) cashAndKRW() (string, string) {
-	cash := firstNonEmpty(r.ForeignCash, r.ForeignUsable, r.ForeignBalance)
+	cash := firstNonZero(r.ForeignCash, r.ForeignUsable, r.ForeignBalance, r.DepositAmount, r.TotalDeposit)
 	krw := firstNonEmpty(r.ForeignKRW)
 	if krw == "" {
 		amount, amountOK := parseKISFloat(cash)
@@ -408,6 +505,20 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func firstNonZero(values ...string) string {
+	for _, value := range values {
+		trimmed := strings.TrimSpace(value)
+		if trimmed == "" {
+			continue
+		}
+		if amount, ok := parseKISFloat(trimmed); ok && amount == 0 {
+			continue
+		}
+		return trimmed
+	}
+	return firstNonEmpty(values...)
 }
 
 func compactBody(body []byte) string {
