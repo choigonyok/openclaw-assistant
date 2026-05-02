@@ -312,6 +312,58 @@ func TestThinkVoteLegacyPathResolvesTopic(t *testing.T) {
 	}
 }
 
+func TestChecklistIndexReadsR2Object(t *testing.T) {
+	store := &fakeThinkStore{objects: map[string][]byte{
+		"checklist/index.json": []byte(`{"version":1,"templates":[{"id":"moving-checklist"}]}`),
+	}}
+	handler := newChecklistHandler(store)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/checklist/index", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "moving-checklist") {
+		t.Fatalf("body = %s, want checklist index payload", rec.Body.String())
+	}
+}
+
+func TestChecklistTemplateReadsR2Object(t *testing.T) {
+	store := &fakeThinkStore{objects: map[string][]byte{
+		"checklist/templates/monthly-villa-move-in-checklist.json": []byte(`{"id":"monthly-villa-move-in-checklist","title":"월세 빌라 입주 체크리스트"}`),
+	}}
+	handler := newChecklistHandler(store)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/checklist/templates/monthly-villa-move-in-checklist", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "월세 빌라 입주 체크리스트") {
+		t.Fatalf("body = %s, want checklist template payload", rec.Body.String())
+	}
+}
+
+func TestChecklistTemplateRejectsInvalidID(t *testing.T) {
+	store := &fakeThinkStore{objects: map[string][]byte{}}
+	handler := newChecklistHandler(store)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/checklist/templates/bad.id", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+}
+
 type fakeSender struct {
 	reply   string
 	err     error

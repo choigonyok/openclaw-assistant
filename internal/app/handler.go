@@ -38,6 +38,7 @@ func NewHandler(client commandSender, auth *AuthService, google *GoogleService, 
 		_, _ = w.Write([]byte("ok\n"))
 	})
 	mux.Handle("/api/think/", NewThinkHandler(r2))
+	mux.Handle("/api/checklist/", NewChecklistHandler(r2))
 	return withRecover(withCORS(mux, cfg.CORSOrigins))
 }
 

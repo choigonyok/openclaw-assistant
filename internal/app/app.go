@@ -166,7 +166,7 @@ func ConfigFromEnv() Config {
 		GoogleRefreshToken:        os.Getenv("GOOGLE_REFRESH_TOKEN"),
 		GoogleAnalyticsPropertyID: envOrDefault("GOOGLE_ANALYTICS_PROPERTY_ID", envOrDefault("GA_PROPERTY_ID", "535464309")),
 		FrontendURL:               os.Getenv("FRONTEND_URL"),
-		CORSAllowedOrigins:        splitCSV(envOrDefault("CORS_ALLOWED_ORIGINS", "https://agent.choigonyok.com,http://localhost:5173,http://localhost:3000")),
+		CORSAllowedOrigins:        splitCSV(envOrDefault("CORS_ALLOWED_ORIGINS", "https://agent.choigonyok.com,https://checklist.choigonyok.com,http://localhost:5173,http://localhost:5174,http://localhost:3000")),
 		Dev:                       envBool("DEV"),
 		KISAppKey:                 os.Getenv("KIS_APP_KEY"),
 		KISAppSecret:              os.Getenv("KIS_APP_SECRET"),
