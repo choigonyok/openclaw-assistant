@@ -91,7 +91,7 @@ OPENCLAW_BASE_URL=http://localhost:18789
 OPENCLAW_TOKEN=
 
 FRONTEND_URL=https://agent.choigonyok.com
-CORS_ALLOWED_ORIGINS=https://agent.choigonyok.com,http://localhost:5173,http://localhost:3000
+CORS_ALLOWED_ORIGINS=https://agent.choigonyok.com,https://checklist.choigonyok.com,http://localhost:5173,http://localhost:5174,http://localhost:3000
 
 NAVER_CLIENT_ID=
 NAVER_CLIENT_SECRET=
@@ -113,6 +113,12 @@ KIS_MOCK=false
 
 UPBIT_ACCESS_KEY=
 UPBIT_SECRET_KEY=
+
+R2_ACCOUNT_ID=
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+R2_BUCKET_NAME=think
+CHECKLIST_R2_BUCKET_NAME=checklist
 ```
 
 Start from the example file:
@@ -147,6 +153,11 @@ Values already exported in your shell take precedence over `.env` values.
 | `KIS_MOCK` | No | When `true`, uses KIS mock trading transaction IDs. |
 | `UPBIT_ACCESS_KEY` | No | Upbit Open API access key for crypto balance lookup. |
 | `UPBIT_SECRET_KEY` | No | Upbit Open API secret key. |
+| `R2_ACCOUNT_ID` | No | Cloudflare account ID for R2-backed JSON APIs. |
+| `R2_ACCESS_KEY_ID` | No | R2 access key ID. |
+| `R2_SECRET_ACCESS_KEY` | No | R2 secret access key. |
+| `R2_BUCKET_NAME` | No | R2 bucket for Think data. Defaults to `think`. |
+| `CHECKLIST_R2_BUCKET_NAME` | No | R2 bucket for checklist data. Defaults to `checklist`; objects live at `index.json` and `templates/{id}.json`. |
 
 If `NAVER_ALLOWED_IDS` is empty, any Naver account that completes login can access the app. For a private OpenClaw console, set it after confirming your Naver profile ID in the app header.
 
