@@ -364,6 +364,25 @@ func TestChecklistIndexReadsLegacyPrefixedR2Object(t *testing.T) {
 	}
 }
 
+func TestChecklistIndexReadsPublicChecklistObject(t *testing.T) {
+	store := &fakeThinkStore{objects: map[string][]byte{
+		"public/checklist/index.json": []byte(`{"version":1,"templates":[{"id":"public-moving-checklist"}]}`),
+	}}
+	handler := newChecklistHandler(store)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/checklist/index", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "public-moving-checklist") {
+		t.Fatalf("body = %s, want public checklist index payload", rec.Body.String())
+	}
+}
+
 func TestChecklistIndexReportsAllTriedKeys(t *testing.T) {
 	store := &fakeThinkStore{objects: map[string][]byte{}}
 	handler := newChecklistHandler(store)
@@ -417,6 +436,25 @@ func TestChecklistTemplateReadsLegacyPrefixedR2Object(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "월세 빌라 입주 체크리스트") {
 		t.Fatalf("body = %s, want legacy checklist template payload", rec.Body.String())
+	}
+}
+
+func TestChecklistTemplateReadsPublicChecklistObject(t *testing.T) {
+	store := &fakeThinkStore{objects: map[string][]byte{
+		"public/checklist/templates/monthly-villa-move-in-checklist.json": []byte(`{"id":"monthly-villa-move-in-checklist","title":"월세 빌라 입주 체크리스트"}`),
+	}}
+	handler := newChecklistHandler(store)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/checklist/templates/monthly-villa-move-in-checklist", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body = %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "월세 빌라 입주 체크리스트") {
+		t.Fatalf("body = %s, want public checklist template payload", rec.Body.String())
 	}
 }
 

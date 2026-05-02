@@ -37,7 +37,7 @@ func handleChecklistIndex(store thinkJSONStore) http.HandlerFunc {
 		defer cancel()
 
 		var index map[string]any
-		if err := getChecklistJSON(ctx, store, []string{"index.json", "checklist/index.json"}, &index); err != nil {
+		if err := getChecklistJSON(ctx, store, checklistIndexKeys(), &index); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
@@ -62,15 +62,34 @@ func handleChecklistTemplate(store thinkJSONStore) http.HandlerFunc {
 		defer cancel()
 
 		var template map[string]any
-		keys := []string{
-			"templates/" + templateID + ".json",
-			"checklist/templates/" + templateID + ".json",
-		}
-		if err := getChecklistJSON(ctx, store, keys, &template); err != nil {
+		if err := getChecklistJSON(ctx, store, checklistTemplateKeys(templateID), &template); err != nil {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "checklist template not found"})
 			return
 		}
 		writeJSON(w, http.StatusOK, template)
+	}
+}
+
+func checklistIndexKeys() []string {
+	return []string{
+		"index.json",
+		"checklist/index.json",
+		"public/checklist/index.json",
+		"openclaw-checklist/public/checklist/index.json",
+		"dist/checklist/index.json",
+		"openclaw-checklist/dist/checklist/index.json",
+	}
+}
+
+func checklistTemplateKeys(templateID string) []string {
+	filename := templateID + ".json"
+	return []string{
+		"templates/" + filename,
+		"checklist/templates/" + filename,
+		"public/checklist/templates/" + filename,
+		"openclaw-checklist/public/checklist/templates/" + filename,
+		"dist/checklist/templates/" + filename,
+		"openclaw-checklist/dist/checklist/templates/" + filename,
 	}
 }
 
