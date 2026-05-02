@@ -364,6 +364,24 @@ func TestChecklistIndexReadsLegacyPrefixedR2Object(t *testing.T) {
 	}
 }
 
+func TestChecklistIndexReportsAllTriedKeys(t *testing.T) {
+	store := &fakeThinkStore{objects: map[string][]byte{}}
+	handler := newChecklistHandler(store)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/checklist/index", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "index.json") || !strings.Contains(body, "checklist/index.json") {
+		t.Fatalf("body = %s, want both attempted keys", body)
+	}
+}
+
 func TestChecklistTemplateReadsR2Object(t *testing.T) {
 	store := &fakeThinkStore{objects: map[string][]byte{
 		"templates/monthly-villa-move-in-checklist.json": []byte(`{"id":"monthly-villa-move-in-checklist","title":"월세 빌라 입주 체크리스트"}`),

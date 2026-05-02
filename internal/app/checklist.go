@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
@@ -74,13 +75,11 @@ func handleChecklistTemplate(store thinkJSONStore) http.HandlerFunc {
 }
 
 func getChecklistJSON(ctx context.Context, store thinkJSONStore, keys []string, v any) error {
-	var lastErr error
 	for _, key := range keys {
 		if err := store.GetJSON(ctx, key, v); err != nil {
-			lastErr = err
 			continue
 		}
 		return nil
 	}
-	return lastErr
+	return fmt.Errorf("checklist object lookup failed; tried keys: %s", strings.Join(keys, ", "))
 }
