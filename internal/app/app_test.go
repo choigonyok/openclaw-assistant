@@ -123,7 +123,7 @@ func TestNaverLoginUsesFrontendURLForRedirectURI(t *testing.T) {
 		RedirectURL:  "http://localhost:8080/auth/naver/callback",
 		SessionKey:   "test-secret",
 	})
-	handler := NewHandler(&fakeSender{}, auth, NewGoogleService(GoogleConfig{}), NewKISClient("", "", "", "", false), NewUpbitClient("", ""), nil, nil, apiHandlerConfig{
+	handler := NewHandler(&fakeSender{}, auth, NewGoogleService(GoogleConfig{}), NewKISClient("", "", "", "", false), NewUpbitClient("", ""), nil, nil, nil, apiHandlerConfig{
 		FrontendURL: "https://agent.choigonyok.com",
 	})
 
@@ -146,7 +146,7 @@ func TestGoogleStatusInDevMode(t *testing.T) {
 		ClientID:     "client",
 		ClientSecret: "secret",
 		RefreshToken: "refresh",
-	}), NewKISClient("", "", "", "", false), NewUpbitClient("", ""), nil, nil, apiHandlerConfig{})
+	}), NewKISClient("", "", "", "", false), NewUpbitClient("", ""), nil, nil, nil, apiHandlerConfig{})
 
 	req := httptest.NewRequest(http.MethodGet, "/api/google/status", nil)
 	rec := httptest.NewRecorder()
@@ -189,6 +189,20 @@ func TestLoadDotEnv(t *testing.T) {
 	}
 	if got, want := os.Getenv("OPENCLAW_TEST_NEW"), "quoted-secret"; got != want {
 		t.Fatalf("OPENCLAW_TEST_NEW = %q, want %q", got, want)
+	}
+}
+
+func TestConfigFromEnvDefaultsChecklistBucket(t *testing.T) {
+	t.Setenv("R2_BUCKET_NAME", "")
+	t.Setenv("CHECKLIST_R2_BUCKET_NAME", "")
+
+	cfg := ConfigFromEnv()
+
+	if got, want := cfg.R2BucketName, "think"; got != want {
+		t.Fatalf("R2BucketName = %q, want %q", got, want)
+	}
+	if got, want := cfg.ChecklistR2BucketName, "checklist"; got != want {
+		t.Fatalf("ChecklistR2BucketName = %q, want %q", got, want)
 	}
 }
 
@@ -314,7 +328,7 @@ func TestThinkVoteLegacyPathResolvesTopic(t *testing.T) {
 
 func TestChecklistIndexReadsR2Object(t *testing.T) {
 	store := &fakeThinkStore{objects: map[string][]byte{
-		"checklist/index.json": []byte(`{"version":1,"templates":[{"id":"moving-checklist"}]}`),
+		"index.json": []byte(`{"version":1,"templates":[{"id":"moving-checklist"}]}`),
 	}}
 	handler := newChecklistHandler(store)
 
@@ -333,7 +347,7 @@ func TestChecklistIndexReadsR2Object(t *testing.T) {
 
 func TestChecklistTemplateReadsR2Object(t *testing.T) {
 	store := &fakeThinkStore{objects: map[string][]byte{
-		"checklist/templates/monthly-villa-move-in-checklist.json": []byte(`{"id":"monthly-villa-move-in-checklist","title":"월세 빌라 입주 체크리스트"}`),
+		"templates/monthly-villa-move-in-checklist.json": []byte(`{"id":"monthly-villa-move-in-checklist","title":"월세 빌라 입주 체크리스트"}`),
 	}}
 	handler := newChecklistHandler(store)
 
@@ -399,7 +413,7 @@ func (f *fakeThinkStore) PutJSON(_ context.Context, key string, v any) error {
 }
 
 func newTestHandler(client commandSender, auth *AuthService) http.Handler {
-	return NewHandler(client, auth, NewGoogleService(GoogleConfig{}), NewKISClient("", "", "", "", false), NewUpbitClient("", ""), nil, nil, apiHandlerConfig{})
+	return NewHandler(client, auth, NewGoogleService(GoogleConfig{}), NewKISClient("", "", "", "", false), NewUpbitClient("", ""), nil, nil, nil, apiHandlerConfig{})
 }
 
 func (f *fakeSender) SendCommand(_ context.Context, command string) (string, error) {

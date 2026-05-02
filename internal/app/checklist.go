@@ -36,7 +36,7 @@ func handleChecklistIndex(store thinkJSONStore) http.HandlerFunc {
 		defer cancel()
 
 		var index map[string]any
-		if err := store.GetJSON(ctx, "checklist/index.json", &index); err != nil {
+		if err := store.GetJSON(ctx, "index.json", &index); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
@@ -61,7 +61,7 @@ func handleChecklistTemplate(store thinkJSONStore) http.HandlerFunc {
 		defer cancel()
 
 		var template map[string]any
-		if err := store.GetJSON(ctx, "checklist/templates/"+templateID+".json", &template); err != nil {
+		if err := store.GetJSON(ctx, "templates/"+templateID+".json", &template); err != nil {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "checklist template not found"})
 			return
 		}

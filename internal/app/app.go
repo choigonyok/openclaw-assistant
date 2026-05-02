@@ -42,10 +42,15 @@ func Run(ctx context.Context, args []string, out io.Writer) error {
 	kis := NewKISClient(cfg.KISAppKey, cfg.KISAppSecret, cfg.KISAccountNo, cfg.KISAccountProduct, cfg.KISMock)
 	upbit := NewUpbitClient(cfg.UpbitAccessKey, cfg.UpbitSecretKey)
 
-	var r2 *R2Client
+	var thinkR2 *R2Client
+	var checklistR2 *R2Client
 	if cfg.R2AccountID != "" {
 		var err error
-		r2, err = NewR2Client(cfg.R2AccountID, cfg.R2AccessKeyID, cfg.R2SecretAccessKey, cfg.R2BucketName)
+		thinkR2, err = NewR2Client(cfg.R2AccountID, cfg.R2AccessKeyID, cfg.R2SecretAccessKey, cfg.R2BucketName)
+		if err != nil {
+			return fmt.Errorf("r2 client: %w", err)
+		}
+		checklistR2, err = NewR2Client(cfg.R2AccountID, cfg.R2AccessKeyID, cfg.R2SecretAccessKey, cfg.ChecklistR2BucketName)
 		if err != nil {
 			return fmt.Errorf("r2 client: %w", err)
 		}
@@ -58,7 +63,7 @@ func Run(ctx context.Context, args []string, out io.Writer) error {
 
 	srv := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           NewHandler(NewOpenClawClient(cfg.OpenClawBaseURL, cfg.OpenClawToken), auth, google, kis, upbit, r2, cf, apiHandlerConfig{FrontendURL: cfg.FrontendURL, CORSOrigins: cfg.CORSAllowedOrigins}),
+		Handler:           NewHandler(NewOpenClawClient(cfg.OpenClawBaseURL, cfg.OpenClawToken), auth, google, kis, upbit, thinkR2, checklistR2, cf, apiHandlerConfig{FrontendURL: cfg.FrontendURL, CORSOrigins: cfg.CORSAllowedOrigins}),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -148,6 +153,7 @@ type Config struct {
 	R2AccessKeyID             string
 	R2SecretAccessKey         string
 	R2BucketName              string
+	ChecklistR2BucketName     string
 	CFAPIToken                string
 }
 
@@ -179,6 +185,7 @@ func ConfigFromEnv() Config {
 		R2AccessKeyID:             os.Getenv("R2_ACCESS_KEY_ID"),
 		R2SecretAccessKey:         os.Getenv("R2_SECRET_ACCESS_KEY"),
 		R2BucketName:              envOrDefault("R2_BUCKET_NAME", "think"),
+		ChecklistR2BucketName:     envOrDefault("CHECKLIST_R2_BUCKET_NAME", "checklist"),
 		CFAPIToken:                os.Getenv("CF_API_TOKEN"),
 	}
 }

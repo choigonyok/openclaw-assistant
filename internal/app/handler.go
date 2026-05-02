@@ -19,7 +19,7 @@ type apiHandlerConfig struct {
 	CORSOrigins []string
 }
 
-func NewHandler(client commandSender, auth *AuthService, google *GoogleService, kis *KISClient, upbit *UpbitClient, r2 *R2Client, cf *CloudflareClient, cfg apiHandlerConfig) http.Handler {
+func NewHandler(client commandSender, auth *AuthService, google *GoogleService, kis *KISClient, upbit *UpbitClient, thinkR2 *R2Client, checklistR2 *R2Client, cf *CloudflareClient, cfg apiHandlerConfig) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", handleAPIHome(cfg.FrontendURL))
 	mux.HandleFunc("/api/session", handleSessionAPI(auth))
@@ -37,8 +37,8 @@ func NewHandler(client commandSender, auth *AuthService, google *GoogleService, 
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok\n"))
 	})
-	mux.Handle("/api/think/", NewThinkHandler(r2))
-	mux.Handle("/api/checklist/", NewChecklistHandler(r2))
+	mux.Handle("/api/think/", NewThinkHandler(thinkR2))
+	mux.Handle("/api/checklist/", NewChecklistHandler(checklistR2))
 	return withRecover(withCORS(mux, cfg.CORSOrigins))
 }
 
