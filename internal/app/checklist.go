@@ -22,12 +22,14 @@ func newChecklistHandler(store thinkJSONStore) http.Handler {
 		})
 	}
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/checklist/index", handleChecklistIndex(store))
-	mux.HandleFunc("/api/checklist/templates/", handleChecklistTemplate(store))
+	mux.HandleFunc("/api/checklist/index", handleChecklistIndex(store, "ko"))
+	mux.HandleFunc("/api/checklist/templates/", handleChecklistTemplate(store, "ko"))
+	mux.HandleFunc("/api/checklist/en/index", handleChecklistIndex(store, "en"))
+	mux.HandleFunc("/api/checklist/en/templates/", handleChecklistTemplate(store, "en"))
 	return mux
 }
 
-func handleChecklistIndex(store thinkJSONStore) http.HandlerFunc {
+func handleChecklistIndex(store thinkJSONStore, lang string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
@@ -37,7 +39,7 @@ func handleChecklistIndex(store thinkJSONStore) http.HandlerFunc {
 		defer cancel()
 
 		var index map[string]any
-		if err := getChecklistJSON(ctx, store, checklistIndexKeys(), &index); err != nil {
+		if err := getChecklistJSON(ctx, store, checklistIndexKeys(lang), &index); err != nil {
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
@@ -45,13 +47,17 @@ func handleChecklistIndex(store thinkJSONStore) http.HandlerFunc {
 	}
 }
 
-func handleChecklistTemplate(store thinkJSONStore) http.HandlerFunc {
+func handleChecklistTemplate(store thinkJSONStore, lang string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			writeJSON(w, http.StatusMethodNotAllowed, map[string]string{"error": "method not allowed"})
 			return
 		}
-		templateID := strings.TrimPrefix(r.URL.Path, "/api/checklist/templates/")
+		prefix := "/api/checklist/templates/"
+		if lang == "en" {
+			prefix = "/api/checklist/en/templates/"
+		}
+		templateID := strings.TrimPrefix(r.URL.Path, prefix)
 		templateID = strings.TrimSuffix(templateID, ".json")
 		if templateID == "" || !checklistTemplateIDPattern.MatchString(templateID) {
 			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid checklist template id"})
@@ -62,7 +68,7 @@ func handleChecklistTemplate(store thinkJSONStore) http.HandlerFunc {
 		defer cancel()
 
 		var template map[string]any
-		if err := getChecklistJSON(ctx, store, checklistTemplateKeys(templateID), &template); err != nil {
+		if err := getChecklistJSON(ctx, store, checklistTemplateKeys(templateID, lang), &template); err != nil {
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "checklist template not found"})
 			return
 		}
@@ -70,7 +76,17 @@ func handleChecklistTemplate(store thinkJSONStore) http.HandlerFunc {
 	}
 }
 
-func checklistIndexKeys() []string {
+func checklistIndexKeys(lang string) []string {
+	if lang == "en" {
+		return []string{
+			"en/index.json",
+			"checklist/en/index.json",
+			"public/checklist/en/index.json",
+			"openclaw-checklist/public/checklist/en/index.json",
+			"dist/checklist/en/index.json",
+			"openclaw-checklist/dist/checklist/en/index.json",
+		}
+	}
 	return []string{
 		"index.json",
 		"checklist/index.json",
@@ -81,8 +97,18 @@ func checklistIndexKeys() []string {
 	}
 }
 
-func checklistTemplateKeys(templateID string) []string {
+func checklistTemplateKeys(templateID string, lang string) []string {
 	filename := templateID + ".json"
+	if lang == "en" {
+		return []string{
+			"en/templates/" + filename,
+			"checklist/en/templates/" + filename,
+			"public/checklist/en/templates/" + filename,
+			"openclaw-checklist/public/checklist/en/templates/" + filename,
+			"dist/checklist/en/templates/" + filename,
+			"openclaw-checklist/dist/checklist/en/templates/" + filename,
+		}
+	}
 	return []string{
 		"templates/" + filename,
 		"checklist/templates/" + filename,
