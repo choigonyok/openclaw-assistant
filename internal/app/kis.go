@@ -124,6 +124,7 @@ type BalanceSummary struct {
 
 type KISDiagnostics struct {
 	DomesticTRID        string `json:"domestic_tr_id,omitempty"`
+	DomesticOutput1Rows int    `json:"domestic_output1_rows"`
 	DomesticOutput2Rows int    `json:"domestic_output2_rows"`
 	DomesticCashTRID    string `json:"domestic_cash_tr_id,omitempty"`
 	DomesticCashMsgCode string `json:"domestic_cash_msg_code,omitempty"`
@@ -253,11 +254,13 @@ func (c *KISClient) GetBalance() (*BalanceResult, error) {
 		Holdings: []Holding{},
 		Diagnostics: KISDiagnostics{
 			DomesticTRID:        trID,
+			DomesticOutput1Rows: len(res.Output1),
 			DomesticOutput2Rows: len(res.Output2),
 		},
 	}
 	for _, h := range res.Output1 {
-		if h.HldgQty == "0" || h.HldgQty == "" {
+		qty, _ := parseKISFloat(h.HldgQty)
+		if qty == 0 {
 			continue
 		}
 		result.Holdings = append(result.Holdings, Holding{
