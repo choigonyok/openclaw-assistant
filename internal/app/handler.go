@@ -19,7 +19,7 @@ type apiHandlerConfig struct {
 	CORSOrigins []string
 }
 
-func NewHandler(client commandSender, auth *AuthService, google *GoogleService, kis *KISClient, upbit *UpbitClient, thinkR2 *R2Client, checklistR2 *R2Client, cf *CloudflareClient, cfg apiHandlerConfig) http.Handler {
+func NewHandler(client commandSender, auth *AuthService, google *GoogleService, kis *KISClient, upbit *UpbitClient, tradingProxy *TradingProxy, thinkR2 *R2Client, checklistR2 *R2Client, cf *CloudflareClient, cfg apiHandlerConfig) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", handleAPIHome(cfg.FrontendURL))
 	mux.HandleFunc("/api/session", handleSessionAPI(auth))
@@ -33,6 +33,8 @@ func NewHandler(client commandSender, auth *AuthService, google *GoogleService, 
 	mux.HandleFunc("/api/assets", handleAssetsAPI(kis, auth))
 	mux.HandleFunc("/api/crypto", handleCryptoAPI(upbit, auth))
 	mux.HandleFunc("/api/sites", handleSitesAPI(cf, auth))
+	mux.HandleFunc("/api/trading/status", handleTradingStatusAPI(tradingProxy, auth))
+	mux.HandleFunc("/api/trading/control", handleTradingControlAPI(tradingProxy, auth))
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok\n"))
