@@ -9,14 +9,20 @@ import (
 )
 
 // TradingProxy forwards trading status requests to the openclaw-trading service.
+//
+// authToken (optional) is included as `Authorization: Bearer <token>` on all
+// upstream requests. The trading service rejects requests without it when its
+// own TRADING_AUTH_TOKEN env is set, so the two services share the same secret.
 type TradingProxy struct {
 	serviceURL string
+	authToken  string
 	http       *http.Client
 }
 
-func NewTradingProxy(serviceURL string) *TradingProxy {
+func NewTradingProxy(serviceURL, authToken string) *TradingProxy {
 	return &TradingProxy{
 		serviceURL: serviceURL,
+		authToken:  authToken,
 		http:       &http.Client{Timeout: 10 * time.Second},
 	}
 }
@@ -79,7 +85,12 @@ func handleTradingControlAPI(proxy *TradingProxy, auth *AuthService) http.Handle
 }
 
 func (p *TradingProxy) get(path string) ([]byte, int, error) {
-	resp, err := p.http.Get(p.serviceURL + path)
+	req, err := http.NewRequest(http.MethodGet, p.serviceURL+path, nil)
+	if err != nil {
+		return nil, 0, err
+	}
+	p.applyAuth(req)
+	resp, err := p.http.Do(req)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -99,6 +110,7 @@ func (p *TradingProxy) post(path string, payload any) ([]byte, int, error) {
 		return nil, 0, err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	p.applyAuth(req)
 	resp, err := p.http.Do(req)
 	if err != nil {
 		return nil, 0, err
@@ -106,4 +118,10 @@ func (p *TradingProxy) post(path string, payload any) ([]byte, int, error) {
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 	return body, resp.StatusCode, nil
+}
+
+func (p *TradingProxy) applyAuth(req *http.Request) {
+	if p.authToken != "" {
+		req.Header.Set("Authorization", "Bearer "+p.authToken)
+	}
 }

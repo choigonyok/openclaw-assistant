@@ -41,7 +41,7 @@ func Run(ctx context.Context, args []string, out io.Writer) error {
 	})
 	kis := NewKISClient(cfg.KISAppKey, cfg.KISAppSecret, cfg.KISAccountNo, cfg.KISAccountProduct, cfg.KISMock)
 	upbit := NewUpbitClient(cfg.UpbitAccessKey, cfg.UpbitSecretKey)
-	trading := NewTradingProxy(cfg.TradingServiceURL)
+	trading := NewTradingProxy(cfg.TradingServiceURL, cfg.TradingAuthToken)
 
 	var thinkR2 *R2Client
 	var checklistR2 *R2Client
@@ -151,6 +151,7 @@ type Config struct {
 	UpbitAccessKey            string
 	UpbitSecretKey            string
 	TradingServiceURL         string
+	TradingAuthToken          string
 	R2AccountID               string
 	R2AccessKeyID             string
 	R2SecretAccessKey         string
@@ -184,6 +185,7 @@ func ConfigFromEnv() Config {
 		UpbitAccessKey:            os.Getenv("UPBIT_ACCESS_KEY"),
 		UpbitSecretKey:            os.Getenv("UPBIT_SECRET_KEY"),
 		TradingServiceURL:         os.Getenv("TRADING_SERVICE_URL"),
+		TradingAuthToken:          os.Getenv("TRADING_AUTH_TOKEN"),
 		R2AccountID:               os.Getenv("R2_ACCOUNT_ID"),
 		R2AccessKeyID:             os.Getenv("R2_ACCESS_KEY_ID"),
 		R2SecretAccessKey:         os.Getenv("R2_SECRET_ACCESS_KEY"),
