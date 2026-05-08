@@ -103,6 +103,7 @@ func (c *KISClient) getToken() (string, error) {
 type Holding struct {
 	Code     string `json:"code"`
 	Name     string `json:"name"`
+	Market   string `json:"market"`
 	Qty      string `json:"qty"`
 	AvgPrice string `json:"avg_price"`
 	CurPrice string `json:"cur_price"`
@@ -133,6 +134,7 @@ type KISDiagnostics struct {
 	ForeignTRID         string `json:"foreign_tr_id,omitempty"`
 	ForeignMsgCode      string `json:"foreign_msg_code,omitempty"`
 	ForeignMsg          string `json:"foreign_msg,omitempty"`
+	ForeignOutput1Rows  int    `json:"foreign_output1_rows"`
 	ForeignOutput2Rows  int    `json:"foreign_output2_rows"`
 	ForeignOutput3Rows  int    `json:"foreign_output3_rows"`
 	ForeignError        string `json:"foreign_error,omitempty"`
@@ -153,6 +155,24 @@ type kisForeignCashRow struct {
 	TotalDeposit   string `json:"tot_dncl_amt"`
 	ForeignKRW     string `json:"frcr_evlu_amt2"`
 	BaseRate       string `json:"bass_exrt"`
+}
+
+type kisForeignHoldingRow struct {
+	Pdno         string `json:"pdno"`
+	PrdtName     string `json:"prdt_name"`
+	ExchangeCode string `json:"ovrs_excg_cd"`
+	Currency     string `json:"tr_crcy_cd"`
+	Qty1         string `json:"ord_psbl_qty1"`
+	Qty2         string `json:"ord_psbl_qty"`
+	Qty3         string `json:"cblc_qty13"`
+	Qty4         string `json:"ovrs_cblc_qty"`
+	AvgPrice     string `json:"pchs_avg_pric"`
+	CurPrice     string `json:"now_pric2"`
+	ForeignEval  string `json:"ovrs_stck_evlu_amt"`
+	ForeignPnl   string `json:"frcr_evlu_pfls_amt"`
+	PnlRate1     string `json:"evlu_pfls_rt1"`
+	PnlRate2     string `json:"evlu_pfls_rt"`
+	BaseRate     string `json:"bass_exrt"`
 }
 
 type kisForeignCashRows []kisForeignCashRow
@@ -266,6 +286,7 @@ func (c *KISClient) GetBalance() (*BalanceResult, error) {
 		result.Holdings = append(result.Holdings, Holding{
 			Code:     h.Pdno,
 			Name:     h.PrdtName,
+			Market:   "KR",
 			Qty:      h.HldgQty,
 			AvgPrice: h.PchsAvgPric,
 			CurPrice: h.Prpr,
@@ -289,6 +310,7 @@ func (c *KISClient) GetBalance() (*BalanceResult, error) {
 	result.Diagnostics.ForeignTRID = foreign.trID
 	result.Diagnostics.ForeignMsgCode = foreign.msgCode
 	result.Diagnostics.ForeignMsg = foreign.msg
+	result.Diagnostics.ForeignOutput1Rows = foreign.output1Rows
 	result.Diagnostics.ForeignOutput2Rows = foreign.output2Rows
 	result.Diagnostics.ForeignOutput3Rows = foreign.output3Rows
 	if foreign.err != nil {
@@ -296,15 +318,27 @@ func (c *KISClient) GetBalance() (*BalanceResult, error) {
 	}
 	result.Summary.CashUSD = foreign.cash
 	result.Summary.CashUSDKRW = foreign.krw
+	if len(foreign.holdings) > 0 {
+		result.Holdings = append(result.Holdings, foreign.holdings...)
+	}
+	if foreign.stockKRW > 0 {
+		existingStock, _ := parseKISFloat(result.Summary.StockAmt)
+		result.Summary.StockAmt = fmt.Sprintf("%.0f", existingStock+foreign.stockKRW)
+		existingTotal, _ := parseKISFloat(result.Summary.TotalAmt)
+		result.Summary.TotalAmt = fmt.Sprintf("%.0f", existingTotal+foreign.stockKRW)
+	}
 	return result, nil
 }
 
 type kisForeignCashResult struct {
 	cash        string
 	krw         string
+	holdings    []Holding
+	stockKRW    float64
 	trID        string
 	msgCode     string
 	msg         string
+	output1Rows int
 	output2Rows int
 	output3Rows int
 	err         error
@@ -456,11 +490,12 @@ func (c *KISClient) getUSDCash(token string) kisForeignCashResult {
 	}
 
 	var res struct {
-		RtCode  string             `json:"rt_cd"`
-		MsgCode string             `json:"msg_cd"`
-		Msg1    string             `json:"msg1"`
-		Output2 kisForeignCashRows `json:"output2"`
-		Output3 kisForeignCashRows `json:"output3"`
+		RtCode  string                 `json:"rt_cd"`
+		MsgCode string                 `json:"msg_cd"`
+		Msg1    string                 `json:"msg1"`
+		Output1 []kisForeignHoldingRow `json:"output1"`
+		Output2 kisForeignCashRows     `json:"output2"`
+		Output3 kisForeignCashRows     `json:"output3"`
 	}
 	if err := json.Unmarshal(raw, &res); err != nil {
 		result.err = fmt.Errorf("외화 예수금 응답 파싱 실패: %w", err)
@@ -468,6 +503,7 @@ func (c *KISClient) getUSDCash(token string) kisForeignCashResult {
 	}
 	result.msgCode = res.MsgCode
 	result.msg = res.Msg1
+	result.output1Rows = len(res.Output1)
 	result.output2Rows = len(res.Output2)
 	result.output3Rows = len(res.Output3)
 	if res.RtCode != "" && res.RtCode != "0" {
@@ -475,8 +511,49 @@ func (c *KISClient) getUSDCash(token string) kisForeignCashResult {
 		return result
 	}
 	result.cash, result.krw = pickUSDCash(append(res.Output2, res.Output3...))
-	if result.cash == "" && result.output2Rows+result.output3Rows == 0 {
-		result.err = fmt.Errorf("외화 예수금 응답에 output2/output3 행이 없습니다")
+	rateByCurrency := map[string]float64{}
+	for _, row := range res.Output2 {
+		if rate, ok := parseKISFloat(row.BaseRate); ok && rate > 0 {
+			rateByCurrency[strings.ToUpper(strings.TrimSpace(row.Currency))] = rate
+		}
+	}
+	for _, h := range res.Output1 {
+		qty := firstNonEmpty(h.Qty1, h.Qty2, h.Qty3, h.Qty4)
+		qtyN, _ := parseKISFloat(qty)
+		if qtyN == 0 {
+			continue
+		}
+		currency := strings.ToUpper(strings.TrimSpace(h.Currency))
+		rate, ok := rateByCurrency[currency]
+		if !ok {
+			rate, _ = parseKISFloat(h.BaseRate)
+		}
+		foreignEval, _ := parseKISFloat(h.ForeignEval)
+		foreignPnl, _ := parseKISFloat(h.ForeignPnl)
+		var evalKRW, pnlKRW string
+		if rate > 0 {
+			evalKRW = fmt.Sprintf("%.0f", foreignEval*rate)
+			pnlKRW = fmt.Sprintf("%.0f", foreignPnl*rate)
+			result.stockKRW += foreignEval * rate
+		}
+		market := strings.ToUpper(strings.TrimSpace(h.ExchangeCode))
+		if market == "" {
+			market = currency
+		}
+		result.holdings = append(result.holdings, Holding{
+			Code:     strings.TrimSpace(h.Pdno),
+			Name:     strings.TrimSpace(h.PrdtName),
+			Market:   market,
+			Qty:      qty,
+			AvgPrice: h.AvgPrice,
+			CurPrice: h.CurPrice,
+			EvalAmt:  evalKRW,
+			PnlAmt:   pnlKRW,
+			PnlRate:  firstNonEmpty(h.PnlRate1, h.PnlRate2),
+		})
+	}
+	if result.cash == "" && result.output1Rows+result.output2Rows+result.output3Rows == 0 {
+		result.err = fmt.Errorf("외화 예수금 응답에 output1/output2/output3 행이 없습니다")
 	}
 	if result.err == nil {
 		c.foreignCache = result
