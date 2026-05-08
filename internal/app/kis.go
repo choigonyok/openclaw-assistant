@@ -134,11 +134,10 @@ type KISDiagnostics struct {
 	ForeignTRID         string `json:"foreign_tr_id,omitempty"`
 	ForeignMsgCode      string `json:"foreign_msg_code,omitempty"`
 	ForeignMsg          string `json:"foreign_msg,omitempty"`
-	ForeignOutput1Rows   int    `json:"foreign_output1_rows"`
-	ForeignOutput2Rows   int    `json:"foreign_output2_rows"`
-	ForeignOutput3Rows   int    `json:"foreign_output3_rows"`
-	ForeignOutput1Sample string `json:"foreign_output1_sample,omitempty"`
-	ForeignError         string `json:"foreign_error,omitempty"`
+	ForeignOutput1Rows  int    `json:"foreign_output1_rows"`
+	ForeignOutput2Rows  int    `json:"foreign_output2_rows"`
+	ForeignOutput3Rows  int    `json:"foreign_output3_rows"`
+	ForeignError        string `json:"foreign_error,omitempty"`
 }
 
 type BalanceResult struct {
@@ -162,15 +161,22 @@ type kisForeignHoldingRow struct {
 	Pdno         string `json:"pdno"`
 	PrdtName     string `json:"prdt_name"`
 	ExchangeCode string `json:"ovrs_excg_cd"`
-	Currency     string `json:"tr_crcy_cd"`
+	MarketName   string `json:"tr_mket_name"`
+	Currency1    string `json:"buy_crcy_cd"`
+	Currency2    string `json:"tr_crcy_cd"`
+	Currency3    string `json:"crcy_cd"`
 	Qty1         string `json:"ord_psbl_qty1"`
 	Qty2         string `json:"ord_psbl_qty"`
 	Qty3         string `json:"cblc_qty13"`
 	Qty4         string `json:"ovrs_cblc_qty"`
-	AvgPrice     string `json:"pchs_avg_pric"`
-	CurPrice     string `json:"now_pric2"`
-	ForeignEval  string `json:"ovrs_stck_evlu_amt"`
-	ForeignPnl   string `json:"frcr_evlu_pfls_amt"`
+	AvgPrice1    string `json:"avg_unpr3"`
+	AvgPrice2    string `json:"pchs_avg_pric"`
+	CurPrice1    string `json:"ovrs_now_pric1"`
+	CurPrice2    string `json:"now_pric2"`
+	ForeignEval1 string `json:"frcr_evlu_amt2"`
+	ForeignEval2 string `json:"ovrs_stck_evlu_amt"`
+	ForeignPnl1  string `json:"evlu_pfls_amt2"`
+	ForeignPnl2  string `json:"frcr_evlu_pfls_amt"`
 	PnlRate1     string `json:"evlu_pfls_rt1"`
 	PnlRate2     string `json:"evlu_pfls_rt"`
 	BaseRate     string `json:"bass_exrt"`
@@ -314,7 +320,6 @@ func (c *KISClient) GetBalance() (*BalanceResult, error) {
 	result.Diagnostics.ForeignOutput1Rows = foreign.output1Rows
 	result.Diagnostics.ForeignOutput2Rows = foreign.output2Rows
 	result.Diagnostics.ForeignOutput3Rows = foreign.output3Rows
-	result.Diagnostics.ForeignOutput1Sample = foreign.output1Sample
 	if foreign.err != nil {
 		result.Diagnostics.ForeignError = foreign.err.Error()
 	}
@@ -333,18 +338,17 @@ func (c *KISClient) GetBalance() (*BalanceResult, error) {
 }
 
 type kisForeignCashResult struct {
-	cash          string
-	krw           string
-	holdings      []Holding
-	stockKRW      float64
-	trID          string
-	msgCode       string
-	msg           string
-	output1Rows   int
-	output2Rows   int
-	output3Rows   int
-	output1Sample string
-	err           error
+	cash        string
+	krw         string
+	holdings    []Holding
+	stockKRW    float64
+	trID        string
+	msgCode     string
+	msg         string
+	output1Rows int
+	output2Rows int
+	output3Rows int
+	err         error
 }
 
 type kisKRWCashResult struct {
@@ -500,10 +504,6 @@ func (c *KISClient) getUSDCash(token string) kisForeignCashResult {
 		Output2 kisForeignCashRows     `json:"output2"`
 		Output3 kisForeignCashRows     `json:"output3"`
 	}
-	var rawRows struct {
-		Output1 []json.RawMessage `json:"output1"`
-	}
-	_ = json.Unmarshal(raw, &rawRows)
 	if err := json.Unmarshal(raw, &res); err != nil {
 		result.err = fmt.Errorf("외화 예수금 응답 파싱 실패: %w", err)
 		return result
@@ -513,9 +513,6 @@ func (c *KISClient) getUSDCash(token string) kisForeignCashResult {
 	result.output1Rows = len(res.Output1)
 	result.output2Rows = len(res.Output2)
 	result.output3Rows = len(res.Output3)
-	if len(rawRows.Output1) > 0 {
-		result.output1Sample = compactBody(rawRows.Output1[0])
-	}
 	if res.RtCode != "" && res.RtCode != "0" {
 		result.err = fmt.Errorf("외화 예수금 API 오류 [%s]: %s", res.MsgCode, res.Msg1)
 		return result
@@ -533,20 +530,23 @@ func (c *KISClient) getUSDCash(token string) kisForeignCashResult {
 		if qtyN == 0 {
 			continue
 		}
-		currency := strings.ToUpper(strings.TrimSpace(h.Currency))
+		currency := strings.ToUpper(strings.TrimSpace(firstNonEmpty(h.Currency1, h.Currency2, h.Currency3)))
 		rate, ok := rateByCurrency[currency]
 		if !ok {
 			rate, _ = parseKISFloat(h.BaseRate)
 		}
-		foreignEval, _ := parseKISFloat(h.ForeignEval)
-		foreignPnl, _ := parseKISFloat(h.ForeignPnl)
+		foreignEval, _ := parseKISFloat(firstNonEmpty(h.ForeignEval1, h.ForeignEval2))
+		foreignPnl, _ := parseKISFloat(firstNonEmpty(h.ForeignPnl1, h.ForeignPnl2))
 		var evalKRW, pnlKRW string
 		if rate > 0 {
 			evalKRW = fmt.Sprintf("%.0f", foreignEval*rate)
 			pnlKRW = fmt.Sprintf("%.0f", foreignPnl*rate)
 			result.stockKRW += foreignEval * rate
 		}
-		market := strings.ToUpper(strings.TrimSpace(h.ExchangeCode))
+		market := strings.TrimSpace(h.MarketName)
+		if market == "" {
+			market = strings.ToUpper(strings.TrimSpace(h.ExchangeCode))
+		}
 		if market == "" {
 			market = currency
 		}
@@ -555,8 +555,8 @@ func (c *KISClient) getUSDCash(token string) kisForeignCashResult {
 			Name:     strings.TrimSpace(h.PrdtName),
 			Market:   market,
 			Qty:      qty,
-			AvgPrice: h.AvgPrice,
-			CurPrice: h.CurPrice,
+			AvgPrice: firstNonEmpty(h.AvgPrice1, h.AvgPrice2),
+			CurPrice: firstNonEmpty(h.CurPrice1, h.CurPrice2),
 			EvalAmt:  evalKRW,
 			PnlAmt:   pnlKRW,
 			PnlRate:  firstNonEmpty(h.PnlRate1, h.PnlRate2),
