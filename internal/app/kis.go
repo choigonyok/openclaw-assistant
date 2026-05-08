@@ -134,10 +134,11 @@ type KISDiagnostics struct {
 	ForeignTRID         string `json:"foreign_tr_id,omitempty"`
 	ForeignMsgCode      string `json:"foreign_msg_code,omitempty"`
 	ForeignMsg          string `json:"foreign_msg,omitempty"`
-	ForeignOutput1Rows  int    `json:"foreign_output1_rows"`
-	ForeignOutput2Rows  int    `json:"foreign_output2_rows"`
-	ForeignOutput3Rows  int    `json:"foreign_output3_rows"`
-	ForeignError        string `json:"foreign_error,omitempty"`
+	ForeignOutput1Rows   int    `json:"foreign_output1_rows"`
+	ForeignOutput2Rows   int    `json:"foreign_output2_rows"`
+	ForeignOutput3Rows   int    `json:"foreign_output3_rows"`
+	ForeignOutput1Sample string `json:"foreign_output1_sample,omitempty"`
+	ForeignError         string `json:"foreign_error,omitempty"`
 }
 
 type BalanceResult struct {
@@ -313,6 +314,7 @@ func (c *KISClient) GetBalance() (*BalanceResult, error) {
 	result.Diagnostics.ForeignOutput1Rows = foreign.output1Rows
 	result.Diagnostics.ForeignOutput2Rows = foreign.output2Rows
 	result.Diagnostics.ForeignOutput3Rows = foreign.output3Rows
+	result.Diagnostics.ForeignOutput1Sample = foreign.output1Sample
 	if foreign.err != nil {
 		result.Diagnostics.ForeignError = foreign.err.Error()
 	}
@@ -331,17 +333,18 @@ func (c *KISClient) GetBalance() (*BalanceResult, error) {
 }
 
 type kisForeignCashResult struct {
-	cash        string
-	krw         string
-	holdings    []Holding
-	stockKRW    float64
-	trID        string
-	msgCode     string
-	msg         string
-	output1Rows int
-	output2Rows int
-	output3Rows int
-	err         error
+	cash          string
+	krw           string
+	holdings      []Holding
+	stockKRW      float64
+	trID          string
+	msgCode       string
+	msg           string
+	output1Rows   int
+	output2Rows   int
+	output3Rows   int
+	output1Sample string
+	err           error
 }
 
 type kisKRWCashResult struct {
@@ -497,6 +500,10 @@ func (c *KISClient) getUSDCash(token string) kisForeignCashResult {
 		Output2 kisForeignCashRows     `json:"output2"`
 		Output3 kisForeignCashRows     `json:"output3"`
 	}
+	var rawRows struct {
+		Output1 []json.RawMessage `json:"output1"`
+	}
+	_ = json.Unmarshal(raw, &rawRows)
 	if err := json.Unmarshal(raw, &res); err != nil {
 		result.err = fmt.Errorf("외화 예수금 응답 파싱 실패: %w", err)
 		return result
@@ -506,6 +513,9 @@ func (c *KISClient) getUSDCash(token string) kisForeignCashResult {
 	result.output1Rows = len(res.Output1)
 	result.output2Rows = len(res.Output2)
 	result.output3Rows = len(res.Output3)
+	if len(rawRows.Output1) > 0 {
+		result.output1Sample = compactBody(rawRows.Output1[0])
+	}
 	if res.RtCode != "" && res.RtCode != "0" {
 		result.err = fmt.Errorf("외화 예수금 API 오류 [%s]: %s", res.MsgCode, res.Msg1)
 		return result
