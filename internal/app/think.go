@@ -112,6 +112,13 @@ func newThinkHandler(store thinkJSONStore) http.Handler {
 	return mux
 }
 
+func thinkLangPrefix(r *http.Request) string {
+	if r.URL.Query().Get("lang") == "en" {
+		return "think/en/"
+	}
+	return "think/"
+}
+
 func handleThinkCategories(store thinkJSONStore) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -121,8 +128,16 @@ func handleThinkCategories(store thinkJSONStore) http.HandlerFunc {
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		defer cancel()
 
+		prefix := thinkLangPrefix(r)
 		var categories []map[string]any
-		if err := store.GetJSON(ctx, "think/categories.json", &categories); err != nil {
+		if err := store.GetJSON(ctx, prefix+"categories.json", &categories); err != nil {
+			// 영어 데이터가 아직 R2에 없는 경우 한국어로 폴백한다.
+			if prefix != "think/" {
+				if fallbackErr := store.GetJSON(ctx, "think/categories.json", &categories); fallbackErr == nil {
+					writeJSON(w, http.StatusOK, categories)
+					return
+				}
+			}
 			writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 			return
 		}
@@ -180,8 +195,15 @@ func handleThinkDilemmas(store thinkJSONStore) http.HandlerFunc {
 			return
 		}
 
+		prefix := thinkLangPrefix(r)
 		var dilemmas []map[string]any
-		if err := store.GetJSON(ctx, "think/dilemmas/"+topicID+"/"+categoryID+".json", &dilemmas); err != nil {
+		if err := store.GetJSON(ctx, prefix+"dilemmas/"+topicID+"/"+categoryID+".json", &dilemmas); err != nil {
+			if prefix != "think/" {
+				if fallbackErr := store.GetJSON(ctx, "think/dilemmas/"+topicID+"/"+categoryID+".json", &dilemmas); fallbackErr == nil {
+					writeJSON(w, http.StatusOK, dilemmas)
+					return
+				}
+			}
 			writeJSON(w, http.StatusNotFound, map[string]string{"error": "category not found"})
 			return
 		}
@@ -218,10 +240,16 @@ func handleThinkDilemma(store thinkJSONStore) http.HandlerFunc {
 			topicID, categoryID, itemID = parts[0], parts[1], parts[2]
 		}
 
+		prefix := thinkLangPrefix(r)
 		var dilemmas []map[string]any
-		if err := store.GetJSON(ctx, "think/dilemmas/"+topicID+"/"+categoryID+".json", &dilemmas); err != nil {
-			writeJSON(w, http.StatusNotFound, map[string]string{"error": "category not found"})
-			return
+		if err := store.GetJSON(ctx, prefix+"dilemmas/"+topicID+"/"+categoryID+".json", &dilemmas); err != nil {
+			if prefix != "think/" {
+				_ = store.GetJSON(ctx, "think/dilemmas/"+topicID+"/"+categoryID+".json", &dilemmas)
+			}
+			if len(dilemmas) == 0 {
+				writeJSON(w, http.StatusNotFound, map[string]string{"error": "category not found"})
+				return
+			}
 		}
 		for _, d := range dilemmas {
 			if id, _ := d["id"].(string); id == itemID {
